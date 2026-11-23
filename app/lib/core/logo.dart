@@ -70,7 +70,7 @@ class ScolarisMarkPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(ScolarisMarkPainter old) => old.badge != badge || old.cornerRadius != cornerRadius;
+  bool shouldRepaint(ScolarisMarkPainter oldDelegate) => oldDelegate.badge != badge || oldDelegate.cornerRadius != cornerRadius;
 }
 
 class ScolarisLogo extends StatelessWidget {
