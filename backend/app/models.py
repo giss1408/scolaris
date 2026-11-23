@@ -365,3 +365,18 @@ class TimetableSlot(Base):
     subject_id: Mapped[int] = mapped_column(ForeignKey("subject.id"))
     teacher_id: Mapped[int | None] = mapped_column(ForeignKey("staff_member.id"), index=True)
     room: Mapped[str | None] = mapped_column(String(30))
+
+
+class SlotCancellation(Base):
+    """One session of a timetable period that will not take place (a date). The period itself stays; reversible until the day has passed."""
+
+    __tablename__ = "slot_cancellation"
+    __table_args__ = (UniqueConstraint("slot_id", "on_date"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    school_id: Mapped[int] = mapped_column(ForeignKey("school.id"), index=True)
+    slot_id: Mapped[int] = mapped_column(ForeignKey("timetable_slot.id", ondelete="CASCADE"), index=True)
+    on_date: Mapped[date] = mapped_column(Date)
+    reason: Mapped[str] = mapped_column(String(20))  # maladie | absence_autorisee | formation | autre (kept for the administration, NOT shown to parents)
+    note: Mapped[str | None] = mapped_column(String(160))
+    cancelled_by: Mapped[int] = mapped_column(ForeignKey("staff_member.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

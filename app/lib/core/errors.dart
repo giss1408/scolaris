@@ -35,7 +35,7 @@ AppError mapError(Object error) {
 /// The ONE place raw errors become text. Never show `e.toString()`.
 String userMessage(Object error) {
   final e = mapError(error);
-  const serverSentence = {'class_overlap', 'teacher_busy', 'room_busy', 'end_before_start', 'teacher_not_assigned'};
+  const serverSentence = {'class_overlap', 'teacher_busy', 'room_busy', 'end_before_start', 'teacher_not_assigned', 'date_not_that_weekday', 'date_in_the_past', 'course_already_over', 'outside_school_year', 'note_required', 'session_already_cancelled'};
   if (serverSentence.contains(e.code) && e.message != null) return e.message!;
   return switch (e.code) {
     'offline' => 'Pas de connexion. Vérifiez votre réseau et réessayez.',
@@ -66,6 +66,13 @@ String userMessage(Object error) {
     'room_busy' => 'Cette salle est déjà prise à ce moment.',
     'end_before_start' => "L'heure de fin doit être après l'heure de début.",
     'teacher_not_assigned' => "Cet enseignant n'est pas affecté à cette classe pour cette matière.",
+    'date_not_that_weekday' => "Cette date ne correspond pas au jour de ce cours.",
+    'date_in_the_past' => 'Cette date est passée.',
+    'course_already_over' => 'Ce cours est déjà terminé.',
+    'outside_school_year' => "Cette date est hors de l'année scolaire.",
+    'note_required' => 'Précisez le motif.',
+    'session_already_cancelled' => 'Cette séance est déjà annulée.',
+    'not_your_course' => 'Vous ne pouvez annuler que vos propres cours.',
     'invalid_input' => 'Vérifiez les informations saisies.',
     _ => e.isForbidden ? 'Cette action n\'est pas disponible pour votre fonction.' : 'Une erreur est survenue. Réessayez.',
   };

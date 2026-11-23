@@ -72,6 +72,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/parent/child/:id', builder: (_, s) => ChildPage(enrollmentId: int.parse(s.pathParameters['id']!), name: s.uri.queryParameters['name'] ?? '')),
       GoRoute(path: '/parent/child/:id/timetable', builder: (_, s) => ChildTimetablePage(enrollmentId: int.parse(s.pathParameters['id']!), name: s.uri.queryParameters['name'] ?? '')),
       GoRoute(path: '/parent/report/:id', builder: (_, s) => ReportCardPage(enrollmentId: int.parse(s.pathParameters['id']!), period: int.tryParse(s.uri.queryParameters['period'] ?? '') ?? 1, parent: true)),
+      GoRoute(path: '/cancellations', builder: (_, __) => const CancelledCoursesPage()),
       GoRoute(path: '/reminders', builder: (_, __) => const RemindersPage()),
       GoRoute(path: '/subjects', builder: (_, __) => const SubjectsPage()),
       GoRoute(path: '/team', builder: (_, __) => const TeamPage()),

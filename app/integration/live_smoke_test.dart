@@ -45,7 +45,7 @@ void main() {
     expect(kids.single.name, 'Fanta TRAORÉ');
     expect((await repo.childReportCard(kids.single.enrollmentId, 1)).average, '15.50');
     expect((await repo.childPayments(kids.single.enrollmentId)), isA<List>());
-    expect((await repo.childTimetable(kids.single.enrollmentId)).map((s) => s.subject), contains('Mathématiques'));
+    expect((await repo.childTimetable(kids.single.enrollmentId)).slots.map((s) => s.subject), contains('Mathématiques'));
     await c.read(sessionProvider.notifier).signOut();
   }, skip: live && parentPhone.isNotEmpty ? false : 'needs SCOLARIS_LIVE=1 and LIVE_PARENT_PHONE');
 
@@ -142,6 +142,17 @@ void main() {
     final tt1 = await repo.classTimetable(cm2.id);
     final mine = tt1.slots.firstWhere((s) => s.room == 'LIVE-1');
     expect((mine.weekday, mine.start, mine.subject), (5, '10:00', 'Mathématiques'));
+    // cancel one session of that period (the next Friday), see it as the administration, restore it
+    var friday = DateTime.now().add(const Duration(days: 1));
+    while (friday.weekday != DateTime.friday) {
+      friday = friday.add(const Duration(days: 1));
+    }
+    await repo.cancelSession(mine.id, friday, reason: 'formation', note: 'Stage');
+    final up = (await repo.upcomingCancellations()).where((c) => c.slotId == mine.id).single;
+    expect((up.reason, up.note, up.message.contains('enseignant absent'), up.message.contains('Stage')), ('formation', 'Stage', true, false));
+    expect((await repo.classTimetable(cm2.id)).cancellations.where((c) => c.slotId == mine.id).single.reason, 'formation');
+    await repo.restoreSession(mine.id, friday);
+    expect((await repo.upcomingCancellations()).where((c) => c.slotId == mine.id), isEmpty);
     await repo.deleteSlot(mine.id);
     expect((await repo.classTimetable(cm2.id)).slots.any((s) => s.room == 'LIVE-1'), isFalse);
 

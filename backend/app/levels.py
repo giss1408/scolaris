@@ -20,3 +20,4 @@ PERIODS = [1, 2, 3]  # trimestres (3 by default)
 # Ivorian honours by period average (out of 20). Defaults; each school can override them (School.honour_thresholds).
 DEFAULT_HONOURS = {"felicitations": 16.0, "encouragements": 14.0, "tableau_honneur": 12.0}
 PASS_MARK = 10.0
+CANCEL_REASONS = ["maladie", "absence_autorisee", "formation", "autre"]  # why a teacher cancels one session of her course

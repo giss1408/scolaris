@@ -16,7 +16,13 @@ class GradesPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final rooms = ref.watch(classroomsProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text(S.gradesTitle)),
+      appBar: AppBar(
+        title: const Text(S.gradesTitle),
+        actions: [
+          if (ref.watch(meProvider).role == 'director' || ref.watch(meProvider).role == 'secretary')
+            IconButton(tooltip: S.cancelledCourses, icon: const Icon(Icons.event_busy_outlined), onPressed: () => context.push('/cancellations')),
+        ],
+      ),
       body: AsyncView<List<Classroom>>(
         value: rooms,
         onRetry: () => ref.invalidate(classroomsProvider),

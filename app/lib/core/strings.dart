@@ -186,6 +186,25 @@ abstract final class S {
   static const days = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
   static const daysShort = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
 
+  // Cancelling a session
+  static const cancelCourse = 'Annuler ce cours';
+  static const restoreCourse = 'Rétablir';
+  static const courseCancelled = 'Cours annulé';
+  static const thisWeek = 'Cette semaine';
+  static const nextWeek = 'Semaine prochaine';
+  static const reasonTitle = 'Motif';
+  static const reasonNote = 'Précisions';
+  static const reasonNoteRequired = 'Précisez le motif';
+  static const cancelInfo = "L'administration est prévenue et les familles voient « cours annulé », sans le motif.";
+  static const cancelDone = "Cours annulé. L'administration est prévenue.";
+  static const restoreDone = 'Cours rétabli.';
+  static const cancelledCourses = 'Cours annulés';
+  static const noCancelled = 'Aucun cours annulé à venir.';
+  static const copyMessage = 'Copier le message aux familles';
+  static const messageCopied = 'Message copié : envoyez-le aux familles.';
+  static const restoreAsk = 'Rétablir ce cours ?';
+  static String reasonLabel(String r) => switch (r) { 'maladie' => 'Maladie', 'absence_autorisee' => 'Absence autorisée', 'formation' => 'Formation', 'autre' => 'Autre', _ => r };
+
   // Teacher assignments
   static const noClassAssigned = "Aucune classe ne vous est attribuée pour le moment. Demandez au directeur de vous affecter à vos classes.";
   static const headTeacher = 'Professeur principal';

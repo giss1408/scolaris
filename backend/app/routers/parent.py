@@ -72,7 +72,10 @@ async def timetable(enrollment_id: int, me: ParentMe = Depends(current_parent), 
     from app.models import TimetableSlot
     from app.routers.timetable import slots_json
 
-    return {"slots": await slots_json(db, enr.school_id, TimetableSlot.classroom_id == enr.classroom_id)}
+    from app.routers.timetable import cancellations_json
+
+    return {"slots": await slots_json(db, enr.school_id, TimetableSlot.classroom_id == enr.classroom_id),
+            "cancellations": await cancellations_json(db, enr.school_id, TimetableSlot.classroom_id == enr.classroom_id, viewer_role=None)}
 
 
 @router.get("/children/{enrollment_id}/absences")

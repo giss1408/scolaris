@@ -8,6 +8,7 @@ School management SaaS for Côte d'Ivoire (see the `gestion-scolaire-ci` skill).
 - **Slice 3, reminders:** the J-5 / J+3 / J+10 / J+20 / escalation scenario, one message per family, no Sunday, one per week, stops on payment, promises to pay, WhatsApp only with opt-in (otherwise a phone call), idempotent planning; a person sends each message through a prepared `wa.me` link (no WhatsApp Business API on the platform yet) and marks it sent; recovered-after-reminder summary.
 - **Slice 4, parents and authorities:** parent space (children in any school holding her verified number: balance, receipts, report cards, absences), DRENA exports (headcount by level/sex/affecté, exam candidate lists CEPE/BEPC/BAC, CSV).
 - **Timetable:** weekly periods per class (Monday-Saturday: day, hours, subject, teacher, room), built by the director or the secretary; nothing overlaps in a class, for a teacher (any class) or in a room, and a clash is refused with a sentence naming it; a teacher can only be placed in a class and subject she is assigned to (a period keeps its place, without a teacher, when she is unassigned or removed); teachers read their own week and their classes, parents read their child's class.
+- **Cancelling a session:** the teacher of a period (or the director / secretary on her behalf) cancels ONE session, a date, with a reason (illness, authorised absence, training, other + note), within the school year and not once it is over; it can be restored until the day has passed. The administration gets the list of upcoming cancelled courses with the real reason and a ready message for the families; parents and the other teachers only see that the session is cancelled, never why (a teacher's illness is her own business).
 - Roles: director, accountant, secretary, teacher (staff app) and parent. Server-enforced; the app hides what a role cannot do.
 
 ## Not built (needs outside accounts or a bigger decision)
@@ -47,6 +48,8 @@ Enforced by the server on every request (the app only hides what a role can neve
 | Sanction and council decision | yes | no | no | no | no |
 | Roll call | any class | no | any class | her classes | read her child's absences |
 | Timetable: build and edit | yes | no | yes | no (reads her own week and her classes) | reads her child's class timetable |
+| Cancel / restore one session of a course | any | no | any | **her own periods only** | no (sees "Cours annulé", never the reason) |
+| See the reason of a cancellation | yes | no | yes | only for her own periods | **never** |
 | DRENA exports | headcount + exam candidates | no | exam candidates | no | no |
 
 Teacher assignment: the director links a teacher to a class for one subject, or for all the subjects she gives there. A head teacher (professeur principal) sees the whole class and writes conduct and appreciation, but can only create marks in the subjects she is assigned. Removing an assignment closes the class to her at once; the marks she already entered stay in the results.

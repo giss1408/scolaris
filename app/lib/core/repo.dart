@@ -89,8 +89,11 @@ abstract class SchoolRepo {
   Future<ClassTimetable> classTimetable(int classroomId);
   Future<void> addSlot(int classroomId, {required int weekday, required String start, required String end, required int subjectId, int? teacherId, String? room});
   Future<void> deleteSlot(int slotId);
-  Future<List<Slot>> myWeek();
-  Future<List<Slot>> childTimetable(int enrollmentId);
+  Future<Week> myWeek();
+  Future<Week> childTimetable(int enrollmentId);
+  Future<void> cancelSession(int slotId, DateTime date, {required String reason, String? note});
+  Future<void> restoreSession(int slotId, DateTime date);
+  Future<List<CancelledSession>> upcomingCancellations();
   Future<String> headcountCsv(int yearId);
   Future<String> examCandidatesCsv(int yearId);
 }
@@ -336,9 +339,18 @@ class HttpRepo implements SchoolRepo {
   Future<void> deleteSlot(int slotId) => _send<Object?>('DELETE', '/v1/timetable/slots/$slotId');
 
   @override
-  Future<List<Slot>> myWeek() async => [for (final j in (await _get<Map<String, dynamic>>('/v1/timetable/me'))['slots'] as List) Slot.fromJson(j as Map<String, dynamic>)];
+  Future<Week> myWeek() async => Week.fromJson(await _get<Map<String, dynamic>>('/v1/timetable/me'));
 
   @override
-  Future<List<Slot>> childTimetable(int enrollmentId) async =>
-      [for (final j in (await _get<Map<String, dynamic>>('/v1/parent/children/$enrollmentId/timetable'))['slots'] as List) Slot.fromJson(j as Map<String, dynamic>)];
+  Future<Week> childTimetable(int enrollmentId) async => Week.fromJson(await _get<Map<String, dynamic>>('/v1/parent/children/$enrollmentId/timetable'));
+
+  @override
+  Future<void> cancelSession(int slotId, DateTime date, {required String reason, String? note}) =>
+      _send<Object?>('POST', '/v1/timetable/slots/$slotId/cancellations', body: {'on_date': isoDate(date), 'reason': reason, if ((note ?? '').trim().isNotEmpty) 'note': note!.trim()});
+
+  @override
+  Future<void> restoreSession(int slotId, DateTime date) => _send<Object?>('DELETE', '/v1/timetable/slots/$slotId/cancellations/${isoDate(date)}');
+
+  @override
+  Future<List<CancelledSession>> upcomingCancellations() async => [for (final j in await _get<List<dynamic>>('/v1/timetable/cancellations')) CancelledSession.fromJson(j as Map<String, dynamic>)];
 }

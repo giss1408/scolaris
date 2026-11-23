@@ -387,14 +387,53 @@ class TimetableTeacher {
   bool gives(int subjectId) => subjectIds == null || subjectIds!.contains(subjectId);
 }
 
+/// One session of a period that will not take place. `reason` is only sent to the administration and to the teacher concerned.
+@immutable
+class Cancellation {
+  const Cancellation({required this.slotId, required this.date, this.reason, this.note});
+  final int slotId;
+  final DateTime date;
+  final String? reason, note;
+  bool matches(int slot, DateTime day) => slotId == slot && date.year == day.year && date.month == day.month && date.day == day.day;
+  factory Cancellation.fromJson(Map<String, dynamic> j) => Cancellation(slotId: j['slot_id'] as int, date: DateTime.parse(j['date'] as String), reason: j['reason'] as String?, note: j['note'] as String?);
+}
+
+/// Periods of a week and the sessions cancelled around today.
+@immutable
+class Week {
+  const Week({required this.slots, this.cancellations = const []});
+  final List<Slot> slots;
+  final List<Cancellation> cancellations;
+  factory Week.fromJson(Map<String, dynamic> j) => Week(
+        slots: [for (final s in j['slots'] as List) Slot.fromJson(s as Map<String, dynamic>)],
+        cancellations: [for (final c in (j['cancellations'] as List?) ?? const []) Cancellation.fromJson(c as Map<String, dynamic>)],
+      );
+}
+
+/// A cancelled session as the administration sees it, with the message to send to the families.
+@immutable
+class CancelledSession {
+  const CancelledSession({required this.slotId, required this.date, required this.start, required this.end, required this.classroom, required this.subject, required this.reason, required this.message, this.teacher, this.note});
+  final int slotId;
+  final DateTime date;
+  final String start, end, classroom, subject, reason, message;
+  final String? teacher, note;
+  factory CancelledSession.fromJson(Map<String, dynamic> j) => CancelledSession(
+        slotId: j['slot_id'] as int, date: DateTime.parse(j['date'] as String), start: j['start'] as String, end: j['end'] as String, classroom: j['classroom'] as String,
+        subject: j['subject'] as String, teacher: j['teacher'] as String?, reason: j['reason'] as String, note: j['note'] as String?, message: j['message'] as String,
+      );
+}
+
 @immutable
 class ClassTimetable {
-  const ClassTimetable({required this.slots, required this.editable, this.teachers = const []});
+  const ClassTimetable({required this.slots, required this.editable, this.teachers = const [], this.cancellations = const []});
   final List<Slot> slots;
   final bool editable;
   final List<TimetableTeacher> teachers;
+  final List<Cancellation> cancellations;
   factory ClassTimetable.fromJson(Map<String, dynamic> j) => ClassTimetable(
         slots: [for (final s in j['slots'] as List) Slot.fromJson(s as Map<String, dynamic>)],
+        cancellations: [for (final c in (j['cancellations'] as List?) ?? const []) Cancellation.fromJson(c as Map<String, dynamic>)],
         editable: j['editable'] == true,
         teachers: [for (final t in (j['teachers'] as List?) ?? const []) TimetableTeacher(id: t['id'] as int, name: t['name'] as String, subjectIds: (t['subject_ids'] as List?)?.cast<int>())],
       );

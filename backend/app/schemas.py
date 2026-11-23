@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.levels import ALL_LEVELS, DISCOUNT_KINDS, EVAL_TYPES, FEE_KINDS, PAYMENT_METHODS
+from app.levels import ALL_LEVELS, CANCEL_REASONS, DISCOUNT_KINDS, EVAL_TYPES, FEE_KINDS, PAYMENT_METHODS
 
 Level = Literal[tuple(ALL_LEVELS)]  # type: ignore[valid-type]
 FeeKind = Literal[tuple(FEE_KINDS)]  # type: ignore[valid-type]
@@ -175,3 +175,9 @@ class SlotIn(BaseModel):
     subject_id: int
     teacher_id: int | None = None
     room: str | None = Field(default=None, max_length=30)
+
+
+class CancelIn(BaseModel):
+    on_date: date
+    reason: Literal[tuple(CANCEL_REASONS)]  # type: ignore[valid-type]
+    note: str | None = Field(default=None, max_length=160)

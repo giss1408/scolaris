@@ -7,8 +7,8 @@ import 'package:scolaris/core/repo.dart';
 import 'package:scolaris/core/session.dart';
 import 'package:scolaris/core/theme.dart';
 
-Me meWith(String role) => Me(
-      staffId: 1, name: 'Awa Koné', role: role, schoolName: 'Groupe Scolaire Les Palmiers', city: 'Abidjan', yearId: 1, yearLabel: '2026-2027',
+Me meWith(String role, {int id = 1}) => Me(
+      staffId: id, name: 'Awa Koné', role: role, schoolName: 'Groupe Scolaire Les Palmiers', city: 'Abidjan', yearId: 1, yearLabel: '2026-2027',
       levels: const {'college': ['6e', '5e']}, feeKinds: const ['scolarite', 'cantine'], methods: const ['especes', 'wave'],
     );
 
@@ -152,10 +152,24 @@ class FakeRepo implements SchoolRepo {
   }
   @override
   Future<void> deleteSlot(int slotId) async => deletedSlots.add(slotId);
+  List<Cancellation> cancellations = const [];
+  final cancelledCalls = <({int slotId, DateTime date, String reason, String? note})>[];
+  final restoredCalls = <({int slotId, DateTime date})>[];
+  AppError? cancelError;
+  List<CancelledSession> upcoming = const [];
   @override
-  Future<List<Slot>> myWeek() async => timetable.slots;
+  Future<Week> myWeek() async => Week(slots: timetable.slots, cancellations: cancellations);
   @override
-  Future<List<Slot>> childTimetable(int enrollmentId) async => timetable.slots;
+  Future<Week> childTimetable(int enrollmentId) async => Week(slots: timetable.slots, cancellations: cancellations);
+  @override
+  Future<void> cancelSession(int slotId, DateTime date, {required String reason, String? note}) async {
+    if (cancelError != null) throw cancelError!;
+    cancelledCalls.add((slotId: slotId, date: date, reason: reason, note: note));
+  }
+  @override
+  Future<void> restoreSession(int slotId, DateTime date) async => restoredCalls.add((slotId: slotId, date: date));
+  @override
+  Future<List<CancelledSession>> upcomingCancellations() async => upcoming;
 
   final reminderItems = <ReminderItem>[];
   final sentReminders = <int>[];
