@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Scolaris">
+  <title>Scolaris</title>
+  <!-- badge -->
+  <rect width="512" height="512" rx="112" fill="#0F766E"/>
+  <!-- open book -->
+  <path d="M92 304 Q174 280 256 316 L256 414 Q174 378 92 402 Z" fill="#FFFFFF"/>
+  <path d="M420 304 Q338 280 256 316 L256 414 Q338 378 420 402 Z" fill="#E6F4F1"/>
+  <path d="M256 316 L256 414" stroke="#0F766E" stroke-width="6" stroke-linecap="round"/>
+  <g stroke="#0F766E" stroke-opacity=".28" stroke-width="7" stroke-linecap="round" fill="none">
+    <path d="M122 330 Q166 320 222 342"/><path d="M122 358 Q166 348 222 370"/>
+    <path d="M390 330 Q346 320 290 342"/><path d="M390 358 Q346 348 290 370"/>
+  </g>
+  <!-- graduation cap -->
+  <path d="M176 196 L176 244 Q256 284 336 244 L336 196 L256 226 Z" fill="#0A5A54"/>
+  <path d="M256 92 L408 152 L256 212 L104 152 Z" fill="#F59E0B"/>
+  <path d="M256 92 L408 152 L256 212 Z" fill="#FBBF24"/>
+  <!-- tassel -->
+  <path d="M388 160 L388 238" stroke="#F59E0B" stroke-width="9" stroke-linecap="round"/>
+  <circle cx="388" cy="248" r="14" fill="#F59E0B"/>
+</svg>

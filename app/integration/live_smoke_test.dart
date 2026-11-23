@@ -1,0 +1,94 @@
+// Runs the app's REAL Dart code (SessionController, AuthService, HttpRepo, interceptor) against the real auth + scolaris services on the platform.
+// Skipped unless SCOLARIS_LIVE=1. Dart does not resolve *.localhost, so we reach Caddy on 127.0.0.1 with the Host header.
+//   SCOLARIS_LIVE=1 LIVE_PHONE=07... LIVE_PASSWORD=... flutter test integration/live_smoke_test.dart
+// (platform/tests/e2e_scolaris.sh sets the school and the director up, then calls this.)
+import 'dart:io';
+
+import 'package:dio/dio.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:scolaris/core/errors.dart';
+import 'package:scolaris/core/repo.dart';
+import 'package:scolaris/core/session.dart';
+
+Dio _dio(String host) => Dio(BaseOptions(baseUrl: 'http://127.0.0.1:8080', headers: {'Host': host}));
+
+void main() {
+  final live = Platform.environment['SCOLARIS_LIVE'] == '1';
+  final phone = Platform.environment['LIVE_PHONE'] ?? '';
+  final password = Platform.environment['LIVE_PASSWORD'] ?? '';
+  final domain = Platform.environment['LIVE_DOMAIN'] ?? 'localhost';
+
+  test('sign in, read, collect, cancel, sign out against the live platform', () async {
+    final store = MemoryTokenStore();
+    final c = ProviderContainer(overrides: [
+      tokenStoreProvider.overrideWithValue(store),
+      authDioProvider.overrideWithValue(_dio('auth-api.$domain')),
+      apiDioProvider.overrideWith((ref) {
+        final dio = _dio('scolaris-api.$domain');
+        final session = ref.read(sessionProvider.notifier);
+        dio.interceptors.add(InterceptorsWrapper(onRequest: (o, h) {
+          if (session.access != null) o.headers['Authorization'] = 'Bearer ${session.access}';
+          h.next(o);
+        }));
+        return dio;
+      }),
+    ]);
+    addTearDown(c.dispose);
+    final session = c.read(sessionProvider.notifier);
+
+    // wrong password: a readable error, nobody signed in
+    await expectLater(session.signIn(phone, 'wrong-password-123'), throwsA(isA<AppError>().having((e) => userMessage(e), 'message', 'Numéro ou mot de passe incorrect.')));
+    expect(c.read(sessionProvider).status, isNot(SessionStatus.signedIn));
+
+    await session.signIn(phone, password);
+    final me = c.read(sessionProvider).me!;
+    expect(me.role, 'director');
+    expect(me.schoolName, 'Ecole E2E');
+    expect(me.levels['college'], contains('6e'));
+    expect(await store.read(), isNotNull); // refresh token kept for the next start
+
+    final repo = HttpRepo(c.read(apiDioProvider));
+    final year = me.yearId!;
+    final rooms = await repo.classrooms(year);
+    final cm2 = rooms.firstWhere((r) => r.name == 'CM2 A');
+
+    final created = await repo.createStudent(NewStudent(
+      lastName: 'Diallo', firstNames: 'Mariam', sex: 'F', classroomId: cm2.id, parentName: 'Diallo Seydou', parentPhone: '01 02 03 04 05', optin: true,
+    ));
+    final found = await repo.students(year, query: 'diallo');
+    expect(found.map((s) => s.id), contains(created.id));
+    final detail = await repo.student(created.id, created.enrollmentId, 'CM2 A');
+    expect(detail.contacts.single.phone, '+2250102030405');
+
+    var account = await repo.account(created.enrollmentId);
+    expect(account.account.totalDue, 85000);
+    expect((await repo.arrears(year)).any((f) => f.name == 'DIALLO'), isTrue);
+
+    // a payment retried with the same key is recorded once
+    final key = newIdempotencyKey();
+    final p1 = await repo.pay(created.enrollmentId, amount: 25000, method: 'wave', reference: 'WV-APP-1', idempotencyKey: key);
+    final p2 = await repo.pay(created.enrollmentId, amount: 25000, method: 'wave', reference: 'WV-APP-1', idempotencyKey: key);
+    expect(p2.id, p1.id);
+    account = await repo.account(created.enrollmentId);
+    expect(account.account.remaining, 60000);
+    await expectLater(repo.pay(created.enrollmentId, amount: 1000, method: 'orange_money', idempotencyKey: newIdempotencyKey()), throwsA(isA<AppError>().having((e) => e.code, 'code', 'reference_required')));
+
+    final receipt = await repo.receipt(p1.id);
+    expect(receipt.number, startsWith('REC-'));
+    expect(receipt.remainingAfter, 60000);
+
+    // a sensitive action: allowed right after signing in; after the session is ended at auth it is refused
+    await repo.cancelPayment(p1.id, 'Test application');
+    account = await repo.account(created.enrollmentId);
+    expect(account.account.remaining, 85000);
+    expect(account.payments.first.isCreditNote, isTrue);
+
+    expect((await repo.dashboard(year)).students, greaterThan(0));
+    expect((await repo.staff()).any((s) => s.role == 'director'), isTrue);
+    await session.stepUp(password); // the password re-proof used by the step-up dialog
+    await session.signOut();
+    expect(c.read(sessionProvider).status, SessionStatus.signedOut);
+    expect(await store.read(), isNull);
+  }, skip: live ? false : 'set SCOLARIS_LIVE=1 (needs the platform running)');
+}
