@@ -8,6 +8,7 @@ import '../../core/models.dart';
 import '../../core/money.dart';
 import '../../core/providers.dart';
 import '../../core/repo.dart';
+import '../../core/school_logo.dart';
 import '../../core/sensitive.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
@@ -44,6 +45,7 @@ class ReceiptPage extends ConsumerWidget {
               const Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.check_circle, color: Palette.success), SizedBox(width: Space.sm), Text(S.paymentDone, style: TextStyle(fontWeight: FontWeight.w600))]),
               const SizedBox(height: Space.md),
             ],
+            if (ref.watch(meProvider).hasLogo) Padding(padding: const EdgeInsets.only(bottom: Space.md), child: Center(child: SchoolLogo(name: rc.school, version: ref.watch(meProvider).logoVersion, size: 56))),
             _Paper(rc),
             const SizedBox(height: Space.md),
             Row(children: [

@@ -9,10 +9,16 @@ School management SaaS for Côte d'Ivoire (see the `gestion-scolaire-ci` skill).
 - **Slice 4, parents and authorities:** parent space (children in any school holding her verified number: balance, receipts, report cards, absences), DRENA exports (headcount by level/sex/affecté, exam candidate lists CEPE/BEPC/BAC, CSV).
 - **Timetable:** weekly periods per class (Monday-Saturday: day, hours, subject, teacher, room), built by the director or the secretary; nothing overlaps in a class, for a teacher (any class) or in a room, and a clash is refused with a sentence naming it; a teacher can only be placed in a class and subject she is assigned to (a period keeps its place, without a teacher, when she is unassigned or removed); teachers read their own week and their classes, parents read their child's class.
 - **Cancelling a session:** the teacher of a period (or the director / secretary on her behalf) cancels ONE session, a date, with a reason (illness, authorised absence, training, other + note), within the school year and not once it is over; it can be restored until the day has passed. The administration gets the list of upcoming cancelled courses with the real reason and a ready message for the families; parents and the other teachers only see that the session is cancelled, never why (a teacher's illness is her own business).
-- Roles: director, accountant, secretary, teacher (staff app) and parent. Server-enforced; the app hides what a role cannot do.
+- **Automatic WhatsApp:** official Cloud API behind `SCO_WA_MODE` (`log` by default: records, sends nothing). An outbox with idempotent notices, the 07:00-20:00 / no-Sunday window, retries with backoff, delivery receipts by a signed webhook, and a message log for the school (who must be phoned instead). Only families who opted in, and only if the director switched it on. It tells parents about absences noted during a course or the day, cancelled courses, replacement teachers, and (for schools that opted in) sends the reminders on its own. See `docs/whatsapp-templates.md`.
+- **Replacement teacher:** the director or the secretary names a replacement for a cancelled session (free at that time, not the absent teacher); she sees the session in her week, can call its roll that day, and the families are told who will teach.
+- **Roll call during a course:** the teacher (or her replacement) notes who is absent or late in HER period; each new absence tells the parent the same day; day-level absences and course absences are kept apart.
+- **Parents report an absence:** for today, up to two weeks ahead, or one of the last three days; the school sees it next to the pupil in the roll call (it informs, it does not justify), and a parent who reported is not told what she told us.
+- **School logo:** the director uploads a PNG or JPEG (checked by content, 512 KB, no SVG); staff and the parents of that school get it, with a cache validator.
+- **Subscription and blocking (Scolaris team):** each school has a monthly subscription; the platform admin (authenticator code required) records payments, sends reminders and a final notice in the app, visible to the director AND the secretary (the team sees who read it), and may block a school that is late: only after reminders AND a final notice announcing a date at least a week ahead, once that date has come, with a fresh password and a live session; everything is audited. A blocked school keeps only what its direction needs to settle (its profile, the subscription page, the logo); teachers, accountant and parents are refused and told why.
+- Roles: director, accountant, secretary, teacher (staff app), parent, and the Scolaris team (platform admin). Server-enforced; the app hides what a role cannot do.
 
 ## Not built (needs outside accounts or a bigger decision)
-WhatsApp Cloud API sending and delivery statuses; Mobile Money payment links and webhooks (an aggregator account: CinetPay, PayDunya, FedaPay); offline mode with sync; PDF generation (receipts, report cards: they are shown on screen and shared as text); parent push notifications; textbook, staff payroll, canteen/transport; ARTCI declaration; production settings and store builds.
+Mobile Money payment links and webhooks (an aggregator account: CinetPay, PayDunya, FedaPay); offline mode with sync; PDF generation (receipts, report cards: they are shown on screen and shared as text); parent push notifications; textbook, staff payroll, canteen/transport; ARTCI declaration; production settings and store builds.
 
 ## Layout
 - `backend/`: FastAPI + Postgres (Alembic). `make test` needs a Postgres on localhost:5440 (`docker run -d -p 5440:5432 -e POSTGRES_USER=scolaris -e POSTGRES_PASSWORD=scolaris -e POSTGRES_DB=scolaris postgres:17-alpine`).
@@ -49,6 +55,11 @@ Enforced by the server on every request (the app only hides what a role can neve
 | Roll call | any class | no | any class | her classes | read her child's absences |
 | Timetable: build and edit | yes | no | yes | no (reads her own week and her classes) | reads her child's class timetable |
 | Cancel / restore one session of a course | any | no | any | **her own periods only** | no (sees "Cours annulé", never the reason) |
+| Call the roll of a course | any | no | any | her own periods, or the session she replaces, today only | no |
+| Report an absence for a day | no | no | no | no | her own children |
+| Name a replacement teacher | yes | no | yes | no | no |
+| Set the school logo / switch automatic WhatsApp | yes | no | no | no | no |
+| See the subscription notices | yes | no | yes | no | no |
 | See the reason of a cancellation | yes | no | yes | only for her own periods | **never** |
 | DRENA exports | headcount + exam candidates | no | exam candidates | no | no |
 

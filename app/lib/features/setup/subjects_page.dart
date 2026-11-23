@@ -38,16 +38,7 @@ class _SubjectsPageState extends ConsumerState<SubjectsPage> {
   }
 
   Future<void> _addSubject() async {
-    final c = TextEditingController();
-    final name = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text(S.addSubject),
-        content: TextField(controller: c, autofocus: true, textCapitalization: TextCapitalization.sentences, decoration: const InputDecoration(labelText: S.subject)),
-        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text(S.cancel)), TextButton(onPressed: () => Navigator.pop(ctx, c.text), child: const Text(S.save))],
-      ),
-    );
-    c.dispose();
+    final name = await askText(context, title: S.addSubject, label: S.subject, minLength: 2);
     if (name == null || name.trim().length < 2) return;
     try {
       await ref.read(repoProvider).addSubject(name);

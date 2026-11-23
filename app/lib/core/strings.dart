@@ -186,6 +186,79 @@ abstract final class S {
   static const days = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
   static const daysShort = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
 
+  /// Name of any weekday, 1 = Monday ... 7 = Sunday (the timetable only has Monday-Saturday, a calendar date can be a Sunday).
+  static String dayLong(int weekday) => const ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'][(weekday - 1) % 7];
+
+  // Roll call of a course, parent reports, substitutes
+  static const doRoll = "Faire l'appel";
+  static const courseRoll = "Appel du cours";
+  static const rollSaved = 'Appel enregistré';
+  static String parentsTold(int n) => n == 0 ? 'Aucun parent à prévenir.' : (n == 1 ? '1 parent prévenu.' : '$n parents prévenus.');
+  static const present = 'Présent';
+  static const reportedByParent = 'Signalée par les parents';
+  static const absentAllDay = 'Absent toute la journée';
+  static const substituteTitle = 'Remplaçant';
+  static const substituteHelp = 'Facultatif : les familles sont prévenues du nom du remplaçant.';
+  static const chooseSubstitute = 'Choisir un remplaçant';
+  static const changeSubstitute = 'Changer le remplaçant';
+  static const noSubstitute = 'Pas de remplaçant';
+  static const substituteSaved = 'Remplaçant enregistré.';
+  static String replacedBy(String n) => 'Remplacé par $n';
+  static const replacement = 'Remplacement';
+  static const reportAbsence = 'Signaler une absence';
+  static const reportedAbsences = 'Absences signalées';
+  static const reportDay = 'Jour';
+  static const reportSent = "L'école est prévenue.";
+  static const withdraw = 'Retirer';
+  static const reportHelp = "L'école verra votre message à l'appel. C'est elle qui décide de justifier l'absence.";
+  static String reportReason(String r) => switch (r) { 'maladie' => 'Maladie', 'rendez_vous' => 'Rendez-vous', 'famille' => 'Raison familiale', 'autre' => 'Autre', _ => r };
+  static const atCourse = 'Pendant le cours';
+
+  // Logo, messages, subscription
+  static const schoolLogo = "Logo de l'école";
+  static const pickLogo = 'Choisir une image';
+  static const removeLogo = 'Retirer le logo';
+  static const logoHelp = "PNG ou JPEG, 512 Ko au maximum. Il s'affiche dans l'application, sur les reçus et sur les bulletins.";
+  static const logoSaved = 'Logo enregistré.';
+  static const autoWhatsapp = 'Messages automatiques (WhatsApp)';
+  static const autoWhatsappHelp = "Prévient les familles qui l'ont accepté : absences, cours annulés, remplaçants, relances de scolarité. Entre 7 h et 20 h, jamais le dimanche.";
+  static const messagesLog = 'Messages aux familles';
+  static const messagesEmpty = 'Aucun message pour le moment.';
+  static const toCall = 'À appeler';
+  static const subscription = 'Abonnement Scolaris';
+  static const subscriptionTitle = 'Abonnement';
+  static const markRead = "J'ai lu";
+  static const accessSuspended = 'Accès suspendu';
+  static const accessSuspendedText = "L'accès de votre établissement à Scolaris est suspendu. Réglez la mensualité en retard pour le rétablir.";
+  static const serviceSuspended = 'Service suspendu pour cet établissement';
+  static const contactSchool = "Contactez l'école.";
+  static String statusLabel(String s) => switch (s) { 'queued' => 'En attente', 'sent' => 'Envoyé', 'delivered' => 'Reçu', 'read' => 'Lu', 'failed' => 'Échec', 'skipped' => "Pas d'accord WhatsApp", _ => s };
+  static String kindMsg(String k) => switch (k) { 'absence' => 'Absence', 'cancellation' => 'Cours annulé', 'substitute' => 'Remplaçant', 'reminder' => 'Relance', _ => 'Message' };
+
+  // Scolaris team (platform admin)
+  static const imTeam = 'Équipe Scolaris';
+  static const totpCode = "Code d'authentification";
+  static const schools = 'Écoles';
+  static const lateOnes = 'En retard';
+  static const setSubscription = "Définir l'abonnement";
+  static const monthlyAmount = 'Mensualité (FCFA)';
+  static const billingDay = 'Jour de paiement (1 à 28)';
+  static const startedOn = 'Début';
+  static const graceDays = 'Délai de grâce (jours)';
+  static const recordPayment = 'Enregistrer un paiement';
+  static const sendReminder = 'Envoyer un rappel';
+  static const sendFinal = 'Dernier avis';
+  static const blockSchool = "Bloquer l'école";
+  static const unblockSchool = "Rétablir l'accès";
+  static const blockReason = 'Motif du blocage';
+  static const blockOn = 'Suspension annoncée le';
+  static const noSubscriptionYet = "Pas d'abonnement défini : cette école n'est jamais en retard.";
+  static const noticesHistory = 'Avis envoyés';
+  static String seenBy(int a, int b) => 'Vu par $a sur $b';
+  static String overdueMonths(int n) => n == 1 ? '1 mensualité en retard' : '$n mensualités en retard';
+  static String noticeKind(String k) => switch (k) { 'reminder' => 'Rappel', 'final_notice' => 'Dernier avis', 'blocked' => 'Blocage', 'unblocked' => 'Rétablissement', _ => 'Information' };
+  static const confirmBlock = "Les enseignants, le personnel et les parents de cette école n'auront plus accès à Scolaris. La direction et la secrétaire verront la raison et pourront régulariser.";
+
   // Cancelling a session
   static const cancelCourse = 'Annuler ce cours';
   static const restoreCourse = 'Rétablir';

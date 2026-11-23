@@ -4,7 +4,10 @@ import 'package:go_router/go_router.dart';
 
 import 'core/logo.dart';
 import 'core/session.dart';
+import 'features/admin/admin_pages.dart';
 import 'features/auth/login_page.dart';
+import 'features/billing/billing_page.dart';
+import 'features/messages/messages_page.dart';
 import 'features/grades/class_page.dart';
 import 'features/grades/grade_entry_page.dart';
 import 'features/grades/report_card_page.dart';
@@ -39,10 +42,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (status == SessionStatus.loading) return state.matchedLocation == '/splash' ? null : '/splash';
       if (status == SessionStatus.signedOut) return atLogin ? null : '/login';
       // signed in: parents have their own space, staff theirs
-      final parent = ref.read(sessionProvider).parent;
+      final s = ref.read(sessionProvider);
       final loc = state.matchedLocation;
-      if (parent) return (loc == '/parent' || loc.startsWith('/parent/')) ? null : '/parent';
-      if (loc == '/parent' || loc.startsWith('/parent/')) return '/';
+      bool under(String p) => loc == p || loc.startsWith('$p/');
+      if (s.admin) return under('/admin') ? null : '/admin';
+      if (s.parent) return under('/parent') ? null : '/parent';
+      if (under('/parent') || under('/admin')) return '/';
       return (atLogin || loc == '/splash') ? '/' : null;
     },
     routes: [
@@ -68,6 +73,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(path: '/grades/evaluation/:id', builder: (_, s) => GradeEntryPage(evaluationId: int.parse(s.pathParameters['id']!))),
       GoRoute(path: '/grades/report/:id', builder: (_, s) => ReportCardPage(enrollmentId: int.parse(s.pathParameters['id']!), period: int.tryParse(s.uri.queryParameters['period'] ?? '') ?? 1)),
+      GoRoute(path: '/admin', builder: (_, __) => const AdminHome()),
+      GoRoute(path: '/admin/schools/:id', builder: (_, s) => AdminSchoolPage(schoolId: int.parse(s.pathParameters['id']!))),
+      GoRoute(path: '/messages', builder: (_, __) => const MessagesPage()),
+      GoRoute(path: '/billing', builder: (_, __) => const BillingPage()),
       GoRoute(path: '/parent', builder: (_, __) => const ParentShell()),
       GoRoute(path: '/parent/child/:id', builder: (_, s) => ChildPage(enrollmentId: int.parse(s.pathParameters['id']!), name: s.uri.queryParameters['name'] ?? '')),
       GoRoute(path: '/parent/child/:id/timetable', builder: (_, s) => ChildTimetablePage(enrollmentId: int.parse(s.pathParameters['id']!), name: s.uri.queryParameters['name'] ?? '')),

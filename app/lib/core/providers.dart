@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'models.dart';
@@ -31,5 +33,15 @@ final classTimetableProvider = FutureProvider.autoDispose.family<ClassTimetable,
 final myWeekProvider = FutureProvider.autoDispose<Week>((ref) => ref.watch(repoProvider).myWeek());
 final childTimetableProvider = FutureProvider.autoDispose.family<Week, int>((ref, enrollmentId) => ref.watch(repoProvider).childTimetable(enrollmentId));
 final upcomingCancellationsProvider = FutureProvider.autoDispose<List<CancelledSession>>((ref) => ref.watch(repoProvider).upcomingCancellations());
+final teachersProvider = FutureProvider.autoDispose<List<TeacherRef>>((ref) => ref.watch(repoProvider).teachers());
+final messagesProvider = FutureProvider.autoDispose.family<MessageLog, String?>((ref, status) => ref.watch(repoProvider).messages(status: status));
+final billingProvider = FutureProvider.autoDispose<BillingInfo>((ref) => ref.watch(repoProvider).billing());
+final adminSchoolsProvider = FutureProvider.autoDispose<List<AdminSchool>>((ref) => ref.watch(repoProvider).adminSchools());
+final adminSchoolProvider = FutureProvider.autoDispose.family<AdminSchoolDetail, int>((ref, id) => ref.watch(repoProvider).adminSchool(id));
+final childReportsProvider = FutureProvider.autoDispose.family<List<AbsenceReport>, int>((ref, id) => ref.watch(repoProvider).childAbsenceReports(id));
+
+/// The school's logo (staff): fetched again only when `logo_version` changes. Null when the school has none.
+final schoolLogoProvider = FutureProvider.autoDispose.family<Uint8List?, String?>((ref, version) => version == null ? Future.value(null) : ref.watch(repoProvider).schoolLogo());
+final parentLogoProvider = FutureProvider.autoDispose.family<Uint8List?, ({int schoolId, String? version})>((ref, k) => k.version == null ? Future.value(null) : ref.watch(repoProvider).parentSchoolLogo(k.schoolId));
 final childrenProvider = FutureProvider.autoDispose<List<ChildRow>>((ref) => ref.watch(repoProvider).children());
 final remindersProvider = FutureProvider.autoDispose<List<ReminderItem>>((ref) => ref.watch(repoProvider).reminders());

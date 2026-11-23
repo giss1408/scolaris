@@ -13,9 +13,12 @@ from app.db import get_session
 from app.deps import Me, current_me
 from app.errors import BadRequest, Conflict, Forbidden, NotFound
 from app.models import AcademicYear, AuditLog, Classroom, SlotCancellation, StaffMember, Subject, TeacherAssignment, TimetableSlot
-from app.schemas import CancelIn, SlotIn
-from app.services import academics
+from app.schemas import CancelIn, SlotIn, SubstituteIn
+from app.services import academics, notices
 
+from sqlalchemy.orm import aliased
+
+SubStaff = aliased(StaffMember)
 router = APIRouter(prefix="/v1", tags=["timetable"])
 EDITORS = ("director", "secretary")
 READERS = ("director", "secretary", "teacher")
@@ -45,13 +48,16 @@ async def cancellations_json(db: AsyncSession, school_id: int, where, *, viewer_
     teacher of that period, never to a colleague reading the class timetable and never to parents (`viewer_role=None`)."""
     today = clock.now().date()
     rows = (await db.execute(
-        select(SlotCancellation, TimetableSlot.teacher_id).join(TimetableSlot, TimetableSlot.id == SlotCancellation.slot_id)
+        select(SlotCancellation, TimetableSlot.teacher_id, StaffMember.display_name).join(TimetableSlot, TimetableSlot.id == SlotCancellation.slot_id)
+        .outerjoin(StaffMember, StaffMember.id == SlotCancellation.substitute_staff_id)
         .where(SlotCancellation.school_id == school_id, SlotCancellation.on_date >= today - timedelta(days=1), SlotCancellation.on_date <= today + timedelta(days=28), where)
         .order_by(SlotCancellation.on_date)
     )).all()
     out = []
-    for c, teacher_id in rows:
+    for c, teacher_id, sub_name in rows:
         item = {"slot_id": c.slot_id, "date": c.on_date.isoformat()}
+        if sub_name:  # who replaces her is public: families should know who will teach
+            item.update(substitute=sub_name, substitute_id=c.substitute_staff_id)
         if viewer_role in EDITORS or (viewer_role == "teacher" and teacher_id is not None and teacher_id == viewer_staff_id):
             item.update(reason=c.reason, note=c.note)
         out.append(item)
@@ -150,8 +156,17 @@ async def my_week(staff_id: int | None = None, m: Me = Depends(current_me), db: 
         target = staff_id
         if await db.scalar(select(StaffMember.id).where(StaffMember.id == target, StaffMember.school_id == m.school_id)) is None:
             raise NotFound("staff_not_found")
+    today = clock.now().date()
+    subs = (await db.execute(
+        select(SlotCancellation.slot_id, SlotCancellation.on_date).where(SlotCancellation.school_id == m.school_id, SlotCancellation.substitute_staff_id == target,
+                                                                         SlotCancellation.on_date >= today - timedelta(days=1), SlotCancellation.on_date <= today + timedelta(days=28))
+        .order_by(SlotCancellation.on_date)
+    )).all()
+    by_slot = {s["id"]: s for s in await slots_json(db, m.school_id, TimetableSlot.id.in_([sid for sid, _ in subs] or [-1]))}
     return {"slots": await slots_json(db, m.school_id, TimetableSlot.teacher_id == target),
-            "cancellations": await cancellations_json(db, m.school_id, TimetableSlot.teacher_id == target, viewer_role=m.role, viewer_staff_id=m.staff.id)}
+            "cancellations": await cancellations_json(db, m.school_id, TimetableSlot.teacher_id == target, viewer_role=m.role, viewer_staff_id=m.staff.id),
+            # the sessions she covers for a colleague, with their date
+            "substitutions": [{**by_slot[sid], "date": d.isoformat()} for sid, d in subs if sid in by_slot]}
 
 
 async def _own_slot(db: AsyncSession, m: Me, slot_id: int) -> TimetableSlot:
@@ -184,11 +199,68 @@ async def cancel_session(slot_id: int, data: CancelIn, m: Me = Depends(current_m
         raise BadRequest("note_required", "Précisez le motif.")
     if await db.scalar(select(SlotCancellation.id).where(SlotCancellation.slot_id == slot.id, SlotCancellation.on_date == data.on_date)):
         raise Conflict("session_already_cancelled", "Cette séance est déjà annulée.")
-    c = SlotCancellation(school_id=m.school_id, slot_id=slot.id, on_date=data.on_date, reason=data.reason, note=note, cancelled_by=m.staff.id)
+    if data.substitute_staff_id is not None and m.role not in EDITORS:
+        raise Forbidden("director_only")  # the direction chooses the replacement, not the absent teacher
+    sub_name = None
+    if data.substitute_staff_id is not None:
+        sub_name = await _check_substitute(db, m.school_id, slot, data.on_date, data.substitute_staff_id)
+    c = SlotCancellation(school_id=m.school_id, slot_id=slot.id, on_date=data.on_date, reason=data.reason, note=note, cancelled_by=m.staff.id, substitute_staff_id=data.substitute_staff_id)
     db.add(c)
     db.add(AuditLog(school_id=m.school_id, actor_id=m.staff.id, action="timetable.session.cancelled", entity="timetable_slot", entity_id=slot.id, detail={"date": data.on_date.isoformat(), "reason": data.reason}))
     await db.commit()
-    return {"slot_id": slot.id, "date": data.on_date.isoformat(), "reason": c.reason, "note": c.note}
+    notified = await notices.notify_session(db, school_id=m.school_id, slot=slot, day=data.on_date, substitute_name=None, now=clock.now())
+    if sub_name:
+        notified += await notices.notify_session(db, school_id=m.school_id, slot=slot, day=data.on_date, substitute_name=sub_name, now=clock.now())
+    await db.commit()
+    return {"slot_id": slot.id, "date": data.on_date.isoformat(), "reason": c.reason, "note": c.note, "substitute": sub_name, "families_notified": notified}
+
+
+async def _check_substitute(db: AsyncSession, school_id: int, slot: TimetableSlot, day: date, staff_id: int) -> str:
+    """A replacement must be an active teacher of the school, not the absent teacher, and free at that time on that day."""
+    teacher = await db.scalar(select(StaffMember).where(StaffMember.id == staff_id, StaffMember.school_id == school_id, StaffMember.role == "teacher", StaffMember.active))
+    if teacher is None:
+        raise BadRequest("not_an_active_teacher", "Ce n'est pas un enseignant actif de l'école.")
+    if staff_id == slot.teacher_id:
+        raise BadRequest("substitute_is_the_teacher", "Le remplaçant ne peut pas être l'enseignant absent.")
+    overlapping = (await db.execute(
+        select(TimetableSlot, Classroom.name).join(Classroom, Classroom.id == TimetableSlot.classroom_id).where(
+            TimetableSlot.school_id == school_id, TimetableSlot.teacher_id == staff_id, TimetableSlot.weekday == slot.weekday, TimetableSlot.start_time < slot.end_time, TimetableSlot.end_time > slot.start_time)
+    )).all()
+    for other, cname in overlapping:
+        if not await db.scalar(select(SlotCancellation.id).where(SlotCancellation.slot_id == other.id, SlotCancellation.on_date == day)):  # her own course is cancelled that day: she is free
+            raise Conflict("teacher_busy", f"{teacher.display_name} est déjà en {cname} de {hhmm(other.start_time)} à {hhmm(other.end_time)}.")
+    covering = (await db.execute(
+        select(TimetableSlot, Classroom.name).join(SlotCancellation, SlotCancellation.slot_id == TimetableSlot.id).join(Classroom, Classroom.id == TimetableSlot.classroom_id).where(
+            SlotCancellation.school_id == school_id, SlotCancellation.substitute_staff_id == staff_id, SlotCancellation.on_date == day, TimetableSlot.id != slot.id,
+            TimetableSlot.start_time < slot.end_time, TimetableSlot.end_time > slot.start_time)
+    )).first()
+    if covering:
+        raise Conflict("teacher_busy", f"{teacher.display_name} remplace déjà en {covering[1]} de {hhmm(covering[0].start_time)} à {hhmm(covering[0].end_time)}.")
+    return teacher.display_name
+
+
+@router.put("/timetable/slots/{slot_id}/cancellations/{day}/substitute")
+async def set_substitute(slot_id: int, day: date, data: SubstituteIn, m: Me = Depends(current_me), db: AsyncSession = Depends(get_session)) -> dict:
+    """Name (or remove) the replacement teacher of a cancelled session. Director and secretary only. The families are told who will teach."""
+    m.require_role(*EDITORS)
+    slot = await db.scalar(select(TimetableSlot).where(TimetableSlot.id == slot_id, TimetableSlot.school_id == m.school_id))
+    if slot is None:
+        raise NotFound("slot_not_found")
+    c = await db.scalar(select(SlotCancellation).where(SlotCancellation.slot_id == slot.id, SlotCancellation.on_date == day))
+    if c is None:
+        raise NotFound("cancellation_not_found")
+    now = clock.now()
+    if day < now.date() or (day == now.date() and slot.end_time <= now.time()):
+        raise BadRequest("course_already_over", "Ce cours est déjà passé.")
+    name = None
+    if data.staff_id is not None:
+        name = await _check_substitute(db, m.school_id, slot, day, data.staff_id)
+    c.substitute_staff_id = data.staff_id
+    db.add(AuditLog(school_id=m.school_id, actor_id=m.staff.id, action="timetable.substitute.set", entity="timetable_slot", entity_id=slot.id, detail={"date": day.isoformat(), "substitute": data.staff_id}))
+    await db.commit()
+    notified = await notices.notify_session(db, school_id=m.school_id, slot=slot, day=day, substitute_name=name, now=now) if name else 0
+    await db.commit()
+    return {"slot_id": slot.id, "date": day.isoformat(), "substitute": name, "families_notified": notified}
 
 
 @router.delete("/timetable/slots/{slot_id}/cancellations/{day}")
@@ -214,15 +286,17 @@ async def upcoming_cancellations(days: int = 30, m: Me = Depends(current_me), db
     m.require_role(*EDITORS)
     today = clock.now().date()
     rows = (await db.execute(
-        select(SlotCancellation, TimetableSlot, Classroom.name, Subject.name, StaffMember.display_name)
+        select(SlotCancellation, TimetableSlot, Classroom.name, Subject.name, StaffMember.display_name, SubStaff.display_name)
         .join(TimetableSlot, TimetableSlot.id == SlotCancellation.slot_id).join(Classroom, Classroom.id == TimetableSlot.classroom_id)
         .join(Subject, Subject.id == TimetableSlot.subject_id).outerjoin(StaffMember, StaffMember.id == TimetableSlot.teacher_id)
+        .outerjoin(SubStaff, SubStaff.id == SlotCancellation.substitute_staff_id)
         .where(SlotCancellation.school_id == m.school_id, SlotCancellation.on_date >= today, SlotCancellation.on_date <= today + timedelta(days=min(max(days, 1), 120)))
         .order_by(SlotCancellation.on_date, TimetableSlot.start_time)
     )).all()
     out = []
-    for c, s, cname, sname, tname in rows:
+    for c, s, cname, sname, tname, subname in rows:
         out.append({
+            "substitute": subname, "substitute_id": c.substitute_staff_id,
             "slot_id": s.id, "date": c.on_date.isoformat(), "weekday": s.weekday, "start": hhmm(s.start_time), "end": hhmm(s.end_time), "classroom": cname, "subject": sname, "teacher": tname,
             "reason": c.reason, "note": c.note,
             "message": f"Le cours de {sname} de la {cname} du {DAYS[s.weekday].lower()} {c.on_date.strftime('%d/%m')} ({hhmm(s.start_time)}-{hhmm(s.end_time)}) est annulé (enseignant absent). Merci de votre compréhension.",

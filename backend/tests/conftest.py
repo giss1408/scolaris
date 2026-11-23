@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator
 
 os.environ.update({
     "SCO_ENV": "test",
+    "SCO_SCHEDULER": "false",
     "SCO_DATABASE_URL": "postgresql+asyncpg://scolaris:scolaris@localhost:5440/scolaris_test",
     "SCO_FIELD_ENCRYPTION_KEY": base64.b64encode(b"e" * 32).decode(),
     "SCO_HASH_KEY": base64.b64encode(b"h" * 32).decode(),

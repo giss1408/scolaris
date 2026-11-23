@@ -32,6 +32,23 @@ class Settings(BaseSettings):
     step_up_seconds: int = 300
     metrics_token: str = ""
 
+    # WhatsApp Business Cloud API. `log` (default) sends nothing and only records the message: safe for dev, staging and tests.
+    # `live` needs the token and phone number id; templates must be approved by Meta first (see docs/whatsapp-templates.md).
+    wa_mode: Literal["log", "live"] = "log"
+    wa_token: str = ""
+    wa_phone_number_id: str = ""
+    wa_api_version: str = "v21.0"
+    wa_app_secret: str = ""  # verifies the X-Hub-Signature-256 of the webhook
+    wa_verify_token: str = ""  # the handshake token Meta sends when the webhook is registered
+    wa_template: str = "scolaris_information"
+    wa_language: str = "fr"
+    # background loop (deliver queued messages, plan and send reminders for schools that opted in). Off in tests.
+    scheduler: bool | None = None
+    scheduler_seconds: int = 60
+
+    # Platform admins (the Scolaris team) sign in at auth with the `admin` app and an authenticator code.
+    admin_audience_app: str = "admin"
+
     @field_validator("field_encryption_key", "hash_key")
     @classmethod
     def _key32(cls, v: str) -> str:
@@ -52,6 +69,10 @@ class Settings(BaseSettings):
     def _fail_closed_outside_dev(self) -> "Settings":
         """prod and staging refuse to start on dev defaults or weak secrets (all problems reported at once). The issuer and test-number rules
         are prod only: the local rehearsal stack runs as staging on http://localhost."""
+        if self.wa_mode == "live":  # a half-configured live channel must not start (no silent drops, no unauthenticated webhook)
+            missing = [n for n in ("wa_token", "wa_phone_number_id", "wa_app_secret", "wa_verify_token") if not getattr(self, n)]
+            if missing:
+                raise ValueError("wa_mode=live needs " + ", ".join(missing))
         if self.env not in ("prod", "staging"):
             return self
         bad: list[str] = []
@@ -74,6 +95,10 @@ class Settings(BaseSettings):
         if bad:
             raise ValueError("unsafe " + self.env + " configuration: " + "; ".join(bad))
         return self
+
+    @property
+    def scheduler_on(self) -> bool:
+        return self.scheduler if self.scheduler is not None else self.env in ("staging", "prod", "dev")
 
     @property
     def test_numbers(self) -> bool:

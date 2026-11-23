@@ -110,7 +110,7 @@ async def test_report_card_annual_average_conduct_absences_and_director_only_dec
     await client.post("/v1/absences", json={"day": date(2026, 10, 1).isoformat(), "entries": [{"enrollment_id": e[0], "kind": "absence", "justified": True, "reason": "Malade"}]}, headers=school["secretary"])
     c1 = (await client.get(f"/v1/enrollments/{e[0]}/report-card?period=1", headers=school["director"])).json()
     assert c1["conduct"] == "17.50" and c1["appreciation"] == "Élève sérieuse"
-    assert c1["absences"] == {"days_unjustified": 1, "days_justified": 1, "late": 0}
+    assert c1["absences"] == {"days_unjustified": 1, "days_justified": 1, "late": 0, "courses_missed": 0}
     c3 = (await client.get(f"/v1/enrollments/{e[0]}/report-card?period=3", headers=school["director"])).json()
     assert c3["decision"] == "passage" and c3["sanction"] == "blame" and c3["average"] is None  # no marks yet: no average, no rank
     assert c3["rank"] is None

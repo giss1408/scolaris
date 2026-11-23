@@ -11,6 +11,7 @@ import '../../core/sensitive.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
 import '../../core/ui.dart';
+import '../attendance/course_roll_page.dart';
 import 'cancel_sheet.dart';
 import 'week_view.dart';
 
@@ -20,6 +21,45 @@ Future<void> cancelFlow(BuildContext context, Slot slot, DateTime date, VoidCall
     refresh();
     if (context.mounted) showMessage(context, S.cancelDone);
   }
+}
+
+/// Choose (or remove) the replacement of a cancelled session.
+Future<void> substituteFlow(BuildContext context, WidgetRef ref, Slot slot, DateTime date, VoidCallback refresh) async {
+  final teachers = await ref.read(teachersProvider.future);
+  if (!context.mounted) return;
+  final others = teachers.where((x) => x.id != slot.teacherId).toList();
+  final picked = await showModalBottomSheet<({int? id})>(
+    context: context,
+    builder: (_) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(Space.md),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text(S.substituteTitle, style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: Space.sm),
+          Text('${slot.subject} · ${slot.classroom} · ${S.days[slot.weekday - 1]} ${formatDate(date)}', style: Theme.of(context).textTheme.bodySmall),
+          const SizedBox(height: Space.md),
+          if (others.isEmpty) const Text("Aucun autre enseignant dans l'équipe."),
+          Wrap(spacing: Space.sm, runSpacing: Space.sm, children: [
+            ActionChip(label: const Text(S.noSubstitute), onPressed: () => Navigator.pop(context, (id: null))),
+            for (final x in others) ActionChip(label: Text(x.name), onPressed: () => Navigator.pop(context, (id: x.id))),
+          ]),
+        ]),
+      ),
+    ),
+  );
+  if (picked == null || !context.mounted) return;
+  try {
+    await ref.read(repoProvider).setSubstitute(slot.id, date, picked.id);
+    refresh();
+    if (context.mounted) showMessage(context, S.substituteSaved);
+  } catch (e) {
+    if (context.mounted) reportError(context, e);
+  }
+}
+
+Future<void> rollFlow(BuildContext context, Slot slot, DateTime date, VoidCallback refresh) async {
+  await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => CourseRollPage(slot: slot, date: date)));
+  refresh();
 }
 
 Future<void> restoreFlow(BuildContext context, WidgetRef ref, Slot slot, DateTime date, VoidCallback refresh) async {
@@ -71,6 +111,8 @@ class ClassTimetableTab extends ConsumerWidget {
           canCancel: (s) => me.role != 'teacher' || s.teacherId == me.staffId,
           onCancel: (s, d) => cancelFlow(context, s, d, refresh),
           onRestore: (s, d) => restoreFlow(context, ref, s, d, refresh),
+          onSubstitute: me.role == 'teacher' ? null : (s, d) => substituteFlow(context, ref, s, d, refresh),
+          onRoll: (s, d) => rollFlow(context, s, d, refresh),
           onDelete: data.editable
               ? (s) async {
                   if (!await confirmDialog(context, title: S.removeSlotAsk, message: '${s.subject} · ${S.days[s.weekday - 1]} ${s.start}-${s.end}', confirm: S.remove, danger: true)) return;
@@ -226,6 +268,8 @@ class MyWeekPage extends ConsumerWidget {
             emptyMessage: "Aucun cours ne vous est encore attribué dans l'emploi du temps.",
             onCancel: (s, d) => cancelFlow(context, s, d, () => ref.invalidate(myWeekProvider)),
             onRestore: (s, d) => restoreFlow(context, ref, s, d, () => ref.invalidate(myWeekProvider)),
+            substitutions: w.substitutions,
+            onRoll: (s, d) => rollFlow(context, s, d, () => ref.invalidate(myWeekProvider)),
           ),
         ),
       ),
@@ -288,6 +332,7 @@ class CancelledCoursesPage extends ConsumerWidget {
                     const SizedBox(height: Space.xs),
                     Text('$weekday ${formatDate(c.date)} · ${c.start}-${c.end} · ${c.teacher ?? S.noTeacher}', style: t.bodySmall),
                     if (c.note != null) Padding(padding: const EdgeInsets.only(top: Space.xs), child: Text(c.note!, style: t.bodySmall)),
+                    if (c.substitute != null) Padding(padding: const EdgeInsets.only(top: Space.sm), child: Align(alignment: Alignment.centerLeft, child: StatusBadge(S.replacedBy(c.substitute!), tone: Tone.info, icon: Icons.swap_horiz_outlined))),
                     const SizedBox(height: Space.md),
                     Wrap(spacing: Space.sm, runSpacing: Space.xs, children: [
                       OutlinedButton.icon(
@@ -298,6 +343,11 @@ class CancelledCoursesPage extends ConsumerWidget {
                         },
                         icon: const Icon(Icons.copy_outlined),
                         label: const Text(S.copyMessage),
+                      ),
+                      TextButton.icon(
+                        onPressed: () => substituteFlow(context, ref, Slot(id: c.slotId, classroomId: 0, classroom: c.classroom, weekday: c.date.weekday, start: c.start, end: c.end, subjectId: 0, subject: c.subject), c.date, () => ref.invalidate(upcomingCancellationsProvider)),
+                        icon: const Icon(Icons.swap_horiz_outlined),
+                        label: Text(c.substitute == null ? S.chooseSubstitute : S.changeSubstitute),
                       ),
                       TextButton.icon(
                         onPressed: () => restoreFlow(

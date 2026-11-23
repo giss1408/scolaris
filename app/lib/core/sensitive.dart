@@ -16,15 +16,17 @@ Future<T?> withStepUp<T>(BuildContext context, WidgetRef ref, Future<T> Function
     if (err.code != 'step_up_required' || !context.mounted) rethrow;
   }
   if (!context.mounted) return null;
-  final password = await _askPassword(context);
-  if (password == null) return null;
-  await ref.read(sessionProvider.notifier).stepUp(password);
+  final admin = ref.read(sessionProvider).admin;
+  final proof = await _askPassword(context, withTotp: admin); // the Scolaris team also re-types her authenticator code
+  if (proof == null) return null;
+  await ref.read(sessionProvider.notifier).stepUp(proof.password, totp: proof.totp);
   return action();
 }
 
-Future<String?> _askPassword(BuildContext context) {
+Future<({String password, String? totp})?> _askPassword(BuildContext context, {bool withTotp = false}) {
   final c = TextEditingController();
-  return showDialog<String>(
+  final code = TextEditingController();
+  return showDialog<({String password, String? totp})>(
     context: context,
     builder: (ctx) {
       var hidden = true;
@@ -41,10 +43,14 @@ Future<String?> _askPassword(BuildContext context) {
               autofillHints: const [AutofillHints.password],
               decoration: InputDecoration(labelText: S.password, suffixIcon: IconButton(tooltip: 'Afficher', icon: Icon(hidden ? Icons.visibility_outlined : Icons.visibility_off_outlined), onPressed: () => set(() => hidden = !hidden))),
             ),
+            if (withTotp) ...[
+              const SizedBox(height: 12),
+              TextField(controller: code, keyboardType: TextInputType.number, maxLength: 6, decoration: const InputDecoration(labelText: S.totpCode, counterText: '')),
+            ],
           ]),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text(S.cancel)),
-            TextButton(onPressed: () => Navigator.pop(ctx, c.text), child: const Text(S.confirm)),
+            TextButton(onPressed: () => Navigator.pop(ctx, (password: c.text, totp: code.text.isEmpty ? null : code.text)), child: const Text(S.confirm)),
           ],
         ),
       );

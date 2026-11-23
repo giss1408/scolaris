@@ -14,6 +14,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     LargeBinary,
     Numeric,
@@ -22,6 +23,7 @@ from sqlalchemy import (
     Time,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -42,6 +44,14 @@ class School(Base):
     code_mena: Mapped[str | None] = mapped_column(String(40))
     city: Mapped[str | None] = mapped_column(String(80))
     phone: Mapped[str | None] = mapped_column(String(20))  # the school's economat line, quoted in reminders
+    # send reminders and notices to families by WhatsApp on its own (default off: the school opts in)
+    auto_whatsapp: Mapped[bool] = mapped_column(Boolean, default=False)
+    logo: Mapped[bytes | None] = mapped_column(LargeBinary)  # the school's logo (PNG or JPEG, small), shown in the app and on documents
+    logo_type: Mapped[str | None] = mapped_column(String(20))
+    # the Scolaris team can block a school that is late with its monthly subscription (after reminders): staff and parents are then refused
+    status: Mapped[str] = mapped_column(String(10), default="active")  # active | blocked
+    blocked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    blocked_reason: Mapped[str | None] = mapped_column(String(240))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     # honours thresholds override (see levels.DEFAULT_HONOURS), e.g. {"felicitations": 15}
     honour_thresholds: Mapped[dict | None] = mapped_column(JSONB)
@@ -278,8 +288,13 @@ class Grade(Base):
 
 
 class Absence(Base):
+    """A day-level absence (slot matin/soir/jour, `slot_id` NULL) or one noted during a COURSE (`slot_id` = the timetable period)."""
+
     __tablename__ = "absence"
-    __table_args__ = (UniqueConstraint("enrollment_id", "day", "slot"),)
+    __table_args__ = (
+        Index("uq_absence_day", "enrollment_id", "day", "slot", unique=True, postgresql_where=text("slot_id IS NULL")),
+        Index("uq_absence_course", "enrollment_id", "day", "slot_id", unique=True, postgresql_where=text("slot_id IS NOT NULL")),
+    )
     id: Mapped[int] = mapped_column(primary_key=True)
     school_id: Mapped[int] = mapped_column(ForeignKey("school.id"), index=True)
     enrollment_id: Mapped[int] = mapped_column(ForeignKey("enrollment.id"), index=True)
@@ -289,6 +304,7 @@ class Absence(Base):
     justified: Mapped[bool] = mapped_column(Boolean, default=False)
     reason: Mapped[str | None] = mapped_column(String(160))
     recorded_by: Mapped[int] = mapped_column(ForeignKey("staff_member.id"))
+    slot_id: Mapped[int | None] = mapped_column(ForeignKey("timetable_slot.id", ondelete="SET NULL"), index=True)
 
 
 class PeriodRemark(Base):
@@ -380,3 +396,105 @@ class SlotCancellation(Base):
     note: Mapped[str | None] = mapped_column(String(160))
     cancelled_by: Mapped[int] = mapped_column(ForeignKey("staff_member.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    # a replacement teacher for this session (assigned by the director or secretary): she sees the class that day and may call the roll
+    substitute_staff_id: Mapped[int | None] = mapped_column(ForeignKey("staff_member.id"), index=True)
+
+
+class AbsenceReport(Base):
+    """A parent tells the school her child will be (or was) absent for a day. The school sees it in the roll call and decides to justify it."""
+
+    __tablename__ = "absence_report"
+    __table_args__ = (UniqueConstraint("enrollment_id", "day"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    school_id: Mapped[int] = mapped_column(ForeignKey("school.id"), index=True)
+    enrollment_id: Mapped[int] = mapped_column(ForeignKey("enrollment.id"), index=True)
+    day: Mapped[date] = mapped_column(Date)
+    reason: Mapped[str] = mapped_column(String(20))  # maladie | rendez_vous | famille | autre
+    note: Mapped[str | None] = mapped_column(String(160))
+    contact_id: Mapped[int | None] = mapped_column(ForeignKey("contact.id"))  # which of her contacts reported (matched by phone)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class OutboundMessage(Base):
+    """A WhatsApp message to a family: queued, sent, delivered, read or failed. UNIQUE (school, dedupe_key): the same notice is never queued twice."""
+
+    __tablename__ = "outbound_message"
+    __table_args__ = (UniqueConstraint("school_id", "dedupe_key"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    school_id: Mapped[int] = mapped_column(ForeignKey("school.id"), index=True)
+    family_id: Mapped[int | None] = mapped_column(ForeignKey("family.id"), index=True)
+    contact_id: Mapped[int | None] = mapped_column(ForeignKey("contact.id"))
+    to_phone_enc: Mapped[bytes | None] = mapped_column(LargeBinary)  # E.164, AES-GCM (none when the family cannot be reached on WhatsApp)
+    kind: Mapped[str] = mapped_column(String(16))  # reminder | absence | cancellation | substitute | other
+    template: Mapped[str] = mapped_column(String(40))
+    params: Mapped[list] = mapped_column(JSONB, default=list)
+    preview: Mapped[str] = mapped_column(Text)  # what the family reads (for the school's message log)
+    dedupe_key: Mapped[str] = mapped_column(String(120))
+    status: Mapped[str] = mapped_column(String(10), default="queued")  # queued | sent | delivered | read | failed | skipped
+    detail: Mapped[str | None] = mapped_column(String(200))  # why skipped / failed
+    provider_id: Mapped[str | None] = mapped_column(String(100), index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Subscription(Base):
+    """What a school owes Scolaris each month. One row per school; set by the platform team."""
+
+    __tablename__ = "subscription"
+    __table_args__ = (CheckConstraint("monthly_amount > 0 AND billing_day BETWEEN 1 AND 28"),)
+    school_id: Mapped[int] = mapped_column(ForeignKey("school.id"), primary_key=True)
+    monthly_amount: Mapped[int] = mapped_column(BigInteger)  # FCFA
+    billing_day: Mapped[int] = mapped_column(Integer, default=5)  # day of the month the instalment is due
+    grace_days: Mapped[int] = mapped_column(Integer, default=5)  # days after the due date before the school counts as late
+    started_on: Mapped[date] = mapped_column(Date)
+    updated_by: Mapped[str | None] = mapped_column(String(64))
+
+
+class SubscriptionPayment(Base):
+    __tablename__ = "subscription_payment"
+    __table_args__ = (CheckConstraint("amount > 0"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    school_id: Mapped[int] = mapped_column(ForeignKey("school.id"), index=True)
+    amount: Mapped[int] = mapped_column(BigInteger)
+    method: Mapped[str] = mapped_column(String(16))
+    reference: Mapped[str | None] = mapped_column(String(80))
+    paid_on: Mapped[date] = mapped_column(Date)
+    recorded_by: Mapped[str] = mapped_column(String(64))  # the platform admin's opaque user id at auth
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class SchoolNotice(Base):
+    """A message from the Scolaris team to a school, shown to its director AND its secretary (reminders about the subscription, the block, its lifting)."""
+
+    __tablename__ = "school_notice"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    school_id: Mapped[int] = mapped_column(ForeignKey("school.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(14))  # reminder | final_notice | blocked | unblocked | info
+    title: Mapped[str] = mapped_column(String(120))
+    text: Mapped[str] = mapped_column(Text)
+    block_on: Mapped[date | None] = mapped_column(Date)  # final notice: the earliest date the school may be blocked
+    created_by: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class SchoolNoticeSeen(Base):
+    __tablename__ = "school_notice_seen"
+    __table_args__ = (UniqueConstraint("notice_id", "staff_id"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    notice_id: Mapped[int] = mapped_column(ForeignKey("school_notice.id", ondelete="CASCADE"), index=True)
+    staff_id: Mapped[int] = mapped_column(ForeignKey("staff_member.id"))
+    seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class PlatformAudit(Base):
+    """What the Scolaris team did to a school (subscription, notices, blocking). Never deleted."""
+
+    __tablename__ = "platform_audit"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    admin: Mapped[str] = mapped_column(String(64))
+    school_id: Mapped[int | None] = mapped_column(ForeignKey("school.id"), index=True)
+    action: Mapped[str] = mapped_column(String(40))
+    detail: Mapped[dict] = mapped_column(JSONB, default=dict)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

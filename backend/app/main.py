@@ -1,3 +1,7 @@
+import asyncio
+import contextlib
+from collections.abc import AsyncIterator
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from regisse_kit.headers import install_security_headers
@@ -8,7 +12,8 @@ from sqlalchemy import text
 from app.config import get_settings
 from app.db import SessionLocal
 from app.errors import install_error_handlers
-from app.routers import academics, exports, money, parent, reminders, school, students, timetable
+from app.routers import academics, attendance, billing, exports, messages, money, parent, platform_admin, reminders, school, students, timetable, webhooks
+from app.services import scheduler
 
 
 async def _check_db() -> None:
@@ -16,9 +21,17 @@ async def _check_db() -> None:
         await s.execute(text("select 1"))
 
 
+@contextlib.asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    job = asyncio.create_task(scheduler.run_forever()) if get_settings().scheduler_on else None
+    yield
+    if job:
+        job.cancel()
+
+
 def create_app() -> FastAPI:
     s = get_settings()
-    app = FastAPI(title="Scolaris API", version="0.1.0", docs_url=None if s.env == "prod" else "/docs", redoc_url=None, openapi_url=None if s.env == "prod" else "/openapi.json")
+    app = FastAPI(lifespan=lifespan, title="Scolaris API", version="0.1.0", docs_url=None if s.env == "prod" else "/docs", redoc_url=None, openapi_url=None if s.env == "prod" else "/openapi.json")
     if s.cors_origins:
         app.add_middleware(CORSMiddleware, allow_origins=s.cors_origins, allow_methods=["*"], allow_headers=["*"])
     install_security_headers(app, prod=s.env == "prod")
@@ -26,7 +39,7 @@ def create_app() -> FastAPI:
     install_observability(app, "scolaris", metrics_token=s.metrics_token or None)
     install_error_handlers(app)
     app.include_router(health_router({"db": _check_db}))
-    for r in (school.router, students.router, money.router, academics.router, reminders.router, parent.router, exports.router, timetable.router):
+    for r in (school.router, students.router, money.router, academics.router, reminders.router, parent.router, exports.router, timetable.router, messages.router, webhooks.router, attendance.router, billing.router, platform_admin.router):
         app.include_router(r)
     return app
 

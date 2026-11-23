@@ -231,12 +231,21 @@ async def record_absences(data: AbsencesIn, m: Me = Depends(current_me), db: Asy
         if data.classroom_id is None:
             raise BadRequest("classroom_required")
         in_class = select(Enrollment.id).where(Enrollment.school_id == m.school_id, Enrollment.classroom_id == data.classroom_id)
-        await db.execute(delete(Absence).where(Absence.school_id == m.school_id, Absence.day == data.day, Absence.enrollment_id.in_(in_class)))
+        await db.execute(delete(Absence).where(Absence.school_id == m.school_id, Absence.day == data.day, Absence.slot_id.is_(None), Absence.enrollment_id.in_(in_class)))
+    from app import clock
+    from app.services import attendance
+
+    already = {(a.enrollment_id, a.kind) for a in await db.scalars(select(Absence).where(Absence.school_id == m.school_id, Absence.day == data.day, Absence.slot_id.is_(None)))}
     for e in data.entries:
         stmt = pg_insert(Absence).values(school_id=m.school_id, enrollment_id=e.enrollment_id, day=data.day, slot=e.slot, kind=e.kind, justified=e.justified, reason=e.reason, recorded_by=m.staff.id)
-        await db.execute(stmt.on_conflict_do_update(index_elements=["enrollment_id", "day", "slot"], set_={"kind": e.kind, "justified": e.justified, "reason": e.reason}))
+        await db.execute(stmt.on_conflict_do_update(index_elements=["enrollment_id", "day", "slot"], index_where=Absence.slot_id.is_(None), set_={"kind": e.kind, "justified": e.justified, "reason": e.reason}))
     await db.commit()
-    return {"recorded": len(data.entries)}
+    notified = 0
+    for e in data.entries:
+        if (e.enrollment_id, e.kind) not in already and data.day == clock.now().date():  # the parent is told the same day, not about a past correction
+            notified += int(await attendance.notify(db, school_id=m.school_id, enrollment_id=e.enrollment_id, kind=e.kind, day=data.day, where="à l'école", key="day", now=clock.now()))
+    await db.commit()
+    return {"recorded": len(data.entries), "notified": notified}
 
 
 @router.get("/classrooms/{classroom_id}/absences")
@@ -246,7 +255,7 @@ async def absences_of_day(classroom_id: int, day: date, m: Me = Depends(current_
     await academics.require_view(db, m.school_id, m.role, m.staff.id, classroom_id)
     rows = await db.execute(
         select(Absence, Student).join(Enrollment, Enrollment.id == Absence.enrollment_id).join(Student, Student.id == Enrollment.student_id)
-        .where(Absence.school_id == m.school_id, Enrollment.classroom_id == classroom_id, Absence.day == day)
+        .where(Absence.school_id == m.school_id, Enrollment.classroom_id == classroom_id, Absence.day == day, Absence.slot_id.is_(None))
     )
     return [{"enrollment_id": a.enrollment_id, "name": f"{s.last_name} {s.first_names}", "kind": a.kind, "slot": a.slot, "justified": a.justified, "reason": a.reason} for a, s in rows.all()]
 

@@ -21,7 +21,7 @@ void main() {
     await t.enterText(find.byType(TextFormField).at(1), 'MonMotDePasse2026');
     await t.tap(find.text('Se connecter').last);
     await t.pumpAndSettle();
-    expect(session.calls, ['signIn parent=true']);
+    expect(session.calls, ['signIn parent=true admin=false totp=']);
   });
 
   testWidgets('a parent creates her account, then is asked for the WhatsApp code', (t) async {

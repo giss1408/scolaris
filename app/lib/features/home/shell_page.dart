@@ -4,6 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models.dart';
 import '../../core/providers.dart';
 import '../../core/strings.dart';
+import 'package:go_router/go_router.dart';
+
+import '../billing/billing_page.dart';
 import '../grades/grades_page.dart';
 import '../money/arrears_page.dart';
 import '../timetable/timetable_pages.dart';
@@ -42,11 +45,14 @@ class _ShellPageState extends ConsumerState<ShellPage> {
   @override
   Widget build(BuildContext context) {
     final me = ref.watch(meProvider);
+    if (me.blocked) return const BlockedPage(); // suspended for an unpaid subscription: the direction sees why, nothing else is open
     final tabs = _tabs(me);
     final index = _index.clamp(0, tabs.length - 1);
     void goTo(int i) => setState(() => _index = i);
     final wide = MediaQuery.sizeOf(context).width >= 840;
-    final body = IndexedStack(index: index, children: [for (final t in tabs) t.builder(goTo)]);
+    final content = IndexedStack(index: index, children: [for (final t in tabs) t.builder(goTo)]);
+    final b = me.banner;
+    final body = b == null || b.level == 'info' ? content : Column(children: [SafeArea(bottom: false, child: BillingBannerBar(banner: b, onTap: () => context.push('/billing'))), Expanded(child: content)]);
     if (wide) {
       return Scaffold(
         body: Row(children: [

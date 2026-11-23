@@ -35,7 +35,7 @@ AppError mapError(Object error) {
 /// The ONE place raw errors become text. Never show `e.toString()`.
 String userMessage(Object error) {
   final e = mapError(error);
-  const serverSentence = {'class_overlap', 'teacher_busy', 'room_busy', 'end_before_start', 'teacher_not_assigned', 'date_not_that_weekday', 'date_in_the_past', 'course_already_over', 'outside_school_year', 'note_required', 'session_already_cancelled'};
+  const serverSentence = {'school_blocked', 'session_cancelled', 'only_today', 'date_in_the_future', 'date_too_old', 'day_out_of_range', 'no_school_on_sunday', 'image_too_large', 'image_format', 'image_size', 'reminders_required', 'final_notice_required', 'block_date_not_reached', 'block_date_too_soon', 'reminder_first', 'not_late', 'no_subscription', 'substitute_is_the_teacher', 'not_an_active_teacher', 'class_overlap', 'teacher_busy', 'room_busy', 'end_before_start', 'teacher_not_assigned', 'date_not_that_weekday', 'date_in_the_past', 'course_already_over', 'outside_school_year', 'note_required', 'session_already_cancelled'};
   if (serverSentence.contains(e.code) && e.message != null) return e.message!;
   return switch (e.code) {
     'offline' => 'Pas de connexion. Vérifiez votre réseau et réessayez.',
@@ -73,6 +73,24 @@ String userMessage(Object error) {
     'note_required' => 'Précisez le motif.',
     'session_already_cancelled' => 'Cette séance est déjà annulée.',
     'not_your_course' => 'Vous ne pouvez annuler que vos propres cours.',
+    'school_blocked' => "L'accès de votre établissement est suspendu. Contactez la direction.",
+    'session_cancelled' => 'Ce cours est annulé.',
+    'only_today' => "Vous pouvez faire l'appel d'aujourd'hui seulement.",
+    'date_in_the_future' => "Ce cours n'a pas encore eu lieu.",
+    'day_out_of_range' => 'Choisissez un jour entre les 3 derniers jours et les 14 prochains.',
+    'no_school_on_sunday' => "Il n'y a pas classe le dimanche.",
+    'image_too_large' => "L'image est trop lourde (512 Ko maximum).",
+    'image_format' => 'Utilisez une image PNG ou JPEG.',
+    'image_size' => "L'image est trop petite ou trop grande.",
+    'totp_required' => "Le code d'authentification est obligatoire.",
+    'not_late' => "Cette école n'est pas en retard de paiement.",
+    'reminders_required' => "Envoyez d'abord des rappels dans l'application.",
+    'final_notice_required' => "Envoyez d'abord le dernier avis avec la date de suspension.",
+    'block_date_not_reached' => "La date de suspension annoncée n'est pas encore arrivée.",
+    'block_date_too_soon' => 'La date de suspension doit être au moins 7 jours plus tard.',
+    'reminder_first' => "Envoyez d'abord un rappel avant le dernier avis.",
+    'no_subscription' => "Définissez d'abord l'abonnement de cette école.",
+    'not_platform_admin' => "Ce compte n'est pas de l'équipe Scolaris.",
     'invalid_input' => 'Vérifiez les informations saisies.',
     _ => e.isForbidden ? 'Cette action n\'est pas disponible pour votre fonction.' : 'Une erreur est survenue. Réessayez.',
   };

@@ -2,7 +2,9 @@
 // Skipped unless SCOLARIS_LIVE=1. Dart does not resolve *.localhost, so we reach Caddy on 127.0.0.1 with the Host header.
 //   SCOLARIS_LIVE=1 LIVE_PHONE=07... LIVE_PASSWORD=... flutter test integration/live_smoke_test.dart
 // (platform/tests/e2e_scolaris.sh sets the school and the director up, then calls this.)
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -46,6 +48,14 @@ void main() {
     expect((await repo.childReportCard(kids.single.enrollmentId, 1)).average, '15.50');
     expect((await repo.childPayments(kids.single.enrollmentId)), isA<List>());
     expect((await repo.childTimetable(kids.single.enrollmentId)).slots.map((s) => s.subject), contains('Mathématiques'));
+    // the parent reports an absence, sees it, and withdraws it
+    var next = DateTime.now().add(const Duration(days: 2));
+    if (next.weekday == DateTime.sunday) next = next.add(const Duration(days: 1));
+    await repo.reportAbsence(kids.single.enrollmentId, next, reason: 'rendez_vous', note: 'Dentiste');
+    final mine = await repo.childAbsenceReports(kids.single.enrollmentId);
+    expect(mine.map((r) => r.reason), contains('rendez_vous'));
+    await repo.withdrawAbsenceReport(kids.single.enrollmentId, next);
+    expect((await repo.childAbsenceReports(kids.single.enrollmentId)).where((r) => r.day == DateTime(next.year, next.month, next.day)), isEmpty);
     await c.read(sessionProvider.notifier).signOut();
   }, skip: live && parentPhone.isNotEmpty ? false : 'needs SCOLARIS_LIVE=1 and LIVE_PARENT_PHONE');
 
@@ -155,6 +165,20 @@ void main() {
     expect((await repo.upcomingCancellations()).where((c) => c.slotId == mine.id), isEmpty);
     await repo.deleteSlot(mine.id);
     expect((await repo.classTimetable(cm2.id)).slots.any((s) => s.room == 'LIVE-1'), isFalse);
+
+    // logo, messages, subscription and the WhatsApp setting through the app's real repository
+    final png = Uint8List.fromList(base64.decode('iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAFklEQVR4nO3BAQEAAACCIP+vbkhAAQAA8G8GHQABfCTLrQAAAABJRU5ErkJggg=='));
+    await repo.uploadLogo(png, 'image/png');
+    expect(await repo.schoolLogo(), png);
+    final meAgain = await repo.teachers();
+    expect(meAgain.map((t) => t.name), contains('Prof E2E'));
+    await repo.setAutoWhatsapp(true);
+    final log = await repo.messages();
+    expect(log.items, isA<List>());
+    final bill = await repo.billing();
+    expect(bill.status, 'active');
+    await repo.deleteLogo();
+    expect(await repo.schoolLogo(), isNull);
 
     expect((await repo.dashboard(year)).students, greaterThan(0));
     expect((await repo.staff()).any((s) => s.role == 'director'), isTrue);

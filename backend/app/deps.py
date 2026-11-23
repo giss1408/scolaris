@@ -5,7 +5,7 @@ from functools import lru_cache
 
 import httpx
 from anyio import to_thread
-from fastapi import Depends, Header
+from fastapi import Depends, Header, Request
 from regisse_kit.sso import Principal, SsoError, SsoVerifier
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,7 +55,11 @@ class Me:
             raise Forbidden("session_ended")
 
 
-async def current_me(authorization: str | None = Header(default=None), db: AsyncSession = Depends(get_session)) -> Me:
+# A blocked school keeps only what its direction needs to understand and settle the situation.
+ALLOWED_WHEN_BLOCKED = ("/v1/me", "/v1/billing", "/v1/school/logo")
+
+
+async def current_me(request: Request, authorization: str | None = Header(default=None), db: AsyncSession = Depends(get_session)) -> Me:
     if not authorization or not authorization.lower().startswith("bearer "):
         raise Unauthorized("missing_token")
     token = authorization[7:].strip()
@@ -77,6 +81,13 @@ async def current_me(authorization: str | None = Header(default=None), db: Async
     # An unknown or deactivated person is refused even with a valid token; her role must match what auth says she holds.
     if staff is None or not staff.active or staff.role != p.role:
         raise Forbidden("not_staff")
+    from app.models import School
+
+    school = await db.get(School, staff.school_id)
+    if school.status == "blocked":
+        path = request.url.path
+        if staff.role not in ("director", "secretary") or not any(path == a or path.startswith(a + "/") for a in ALLOWED_WHEN_BLOCKED):
+            raise Forbidden("school_blocked", "L'accès de votre établissement est suspendu. Contactez la direction.")
     return Me(staff=staff, principal=p)
 
 
@@ -110,3 +121,39 @@ async def current_parent(authorization: str | None = Header(default=None), db: A
     h = _hash(p.phone_key[4:])
     rows = (await db.execute(select(Contact.id, Contact.family_id).where(Contact.phone_hash == h))).all()
     return ParentMe(principal=p, contact_ids=[r[0] for r in rows], family_ids=sorted({r[1] for r in rows}), phone_hash=h)
+
+
+@dataclass
+class AdminMe:
+    """A member of the Scolaris team: signed in at auth in the `admin` app, with her authenticator code. Not a member of any school."""
+
+    principal: Principal
+
+    @property
+    def id(self) -> str:
+        return self.principal.sub
+
+    async def require_recent_password(self) -> None:
+        """Blocking a school, taking a payment: the password was re-proved a few minutes ago AND the auth session is still alive."""
+        try:
+            self.principal.require_step_up(get_settings().step_up_seconds, amr="pwd")
+        except SsoError:
+            raise Forbidden("step_up_required") from None
+        if not await auth_client.session_active(self.principal.sid):
+            raise Forbidden("session_ended")
+
+
+async def current_admin(authorization: str | None = Header(default=None)) -> AdminMe:
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise Unauthorized("missing_token")
+    try:
+        p = await to_thread.run_sync(verifier().verify, authorization[7:].strip())
+    except (SsoError, httpx.HTTPError, ValueError):
+        raise Unauthorized("invalid_token") from None
+    if p.app != get_settings().admin_audience_app or p.role != "platform_admin":
+        raise Forbidden("not_platform_admin")
+    if "totp" not in p.amr:  # the authenticator code is part of this role's sign-in; a token without it is refused
+        raise Forbidden("totp_required")
+    if p.must_change_password:
+        raise Forbidden("password_change_required")
+    return AdminMe(principal=p)

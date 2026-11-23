@@ -177,7 +177,30 @@ class SlotIn(BaseModel):
     room: str | None = Field(default=None, max_length=30)
 
 
+class SubstituteIn(BaseModel):
+    staff_id: int | None = None  # None: no replacement
+
+
 class CancelIn(BaseModel):
     on_date: date
+    substitute_staff_id: int | None = None  # director / secretary only
     reason: Literal[tuple(CANCEL_REASONS)]  # type: ignore[valid-type]
+    note: str | None = Field(default=None, max_length=160)
+
+
+class RollEntryIn(BaseModel):
+    enrollment_id: int
+    kind: Literal["absence", "retard"] = "absence"
+    justified: bool = False
+    reason: str | None = Field(default=None, max_length=160)
+
+
+class CourseRollIn(BaseModel):
+    on_date: date
+    entries: list[RollEntryIn]  # the pupils NOT present; everyone else in the class is present
+
+
+class AbsenceReportIn(BaseModel):
+    day: date
+    reason: Literal["maladie", "rendez_vous", "famille", "autre"]
     note: str | None = Field(default=None, max_length=160)

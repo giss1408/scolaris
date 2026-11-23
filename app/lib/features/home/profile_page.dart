@@ -7,6 +7,8 @@ import '../../core/config.dart';
 import '../../core/errors.dart';
 import '../../core/providers.dart';
 import '../../core/repo.dart';
+import '../../core/school_logo.dart';
+import '../setup/logo_sheet.dart';
 import '../../core/session.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
@@ -24,6 +26,8 @@ class ProfilePage extends ConsumerWidget {
       appBar: AppBar(title: const Text(S.tabProfile)),
       body: ListView(padding: const EdgeInsets.all(Space.md), children: [
         const SizedBox(height: Space.sm),
+        Center(child: SchoolLogo(name: me.schoolName, version: me.logoVersion, size: 64)),
+        const SizedBox(height: Space.md),
         ProfileHeader(
           name: me.name,
           subtitle: me.schoolName,
@@ -40,6 +44,32 @@ class ProfilePage extends ConsumerWidget {
             SettingsRow(icon: Icons.request_quote_outlined, label: S.fees, onTap: () => context.push('/fees')),
             SettingsRow(icon: Icons.menu_book_outlined, label: S.subjectsTitle, onTap: () => context.push('/subjects')),
             SettingsRow(icon: Icons.group_outlined, label: S.team, onTap: () => context.push('/team')),
+            SettingsRow(icon: Icons.image_outlined, label: S.schoolLogo, value: me.hasLogo ? 'Défini' : 'Aucun', onTap: () => showModalBottomSheet<void>(context: context, builder: (_) => const LogoSheet())),
+          ]),
+        if (me.isDirector)
+          Padding(
+            padding: const EdgeInsets.only(top: Space.lg),
+            child: Card(
+              child: SwitchListTile(
+                secondary: const Icon(Icons.chat_outlined),
+                title: const Text(S.autoWhatsapp),
+                subtitle: const Text(S.autoWhatsappHelp),
+                value: me.autoWhatsapp,
+                onChanged: (v) async {
+                  try {
+                    await ref.read(repoProvider).setAutoWhatsapp(v);
+                    await ref.read(sessionProvider.notifier).refreshProfile();
+                  } catch (e) {
+                    if (context.mounted) showMessage(context, userMessage(e));
+                  }
+                },
+              ),
+            ),
+          ),
+        if (me.role != 'teacher')
+          SettingsGroup(title: 'Communication', children: [
+            SettingsRow(icon: Icons.mark_chat_read_outlined, label: S.messagesLog, onTap: () => context.push('/messages')),
+            if (me.isDirector || me.role == 'secretary') SettingsRow(icon: Icons.workspace_premium_outlined, label: S.subscription, value: me.banner == null || me.banner!.level == 'info' ? null : me.banner!.title, onTap: () => context.push('/billing')),
           ]),
         if (me.isDirector)
           SettingsGroup(title: S.exports, children: [

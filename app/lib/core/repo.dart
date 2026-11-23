@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -91,7 +92,30 @@ abstract class SchoolRepo {
   Future<void> deleteSlot(int slotId);
   Future<Week> myWeek();
   Future<Week> childTimetable(int enrollmentId);
-  Future<void> cancelSession(int slotId, DateTime date, {required String reason, String? note});
+  Future<void> cancelSession(int slotId, DateTime date, {required String reason, String? note, int? substituteStaffId});
+  Future<void> setSubstitute(int slotId, DateTime date, int? staffId);
+  Future<List<TeacherRef>> teachers();
+  Future<List<RollRow>> courseRoll(int slotId, DateTime date);
+  Future<({int recorded, int notified})> saveCourseRoll(int slotId, DateTime date, List<({int enrollmentId, String kind, bool justified})> notPresent);
+  Future<List<AbsenceReport>> classAbsenceReports(int classroomId, DateTime day);
+  Future<void> reportAbsence(int enrollmentId, DateTime day, {required String reason, String? note});
+  Future<List<AbsenceReport>> childAbsenceReports(int enrollmentId);
+  Future<void> withdrawAbsenceReport(int enrollmentId, DateTime day);
+  Future<Uint8List?> schoolLogo();
+  Future<Uint8List?> parentSchoolLogo(int schoolId);
+  Future<void> uploadLogo(Uint8List bytes, String contentType);
+  Future<void> deleteLogo();
+  Future<void> setAutoWhatsapp(bool on);
+  Future<MessageLog> messages({String? status});
+  Future<BillingInfo> billing();
+  Future<void> markNoticeSeen(int id);
+  Future<List<AdminSchool>> adminSchools();
+  Future<AdminSchoolDetail> adminSchool(int id);
+  Future<void> adminSetSubscription(int schoolId, {required int monthlyAmount, required int billingDay, required DateTime startedOn, int graceDays = 5});
+  Future<void> adminRecordPayment(int schoolId, {required int amount, required String method, String? reference, DateTime? paidOn});
+  Future<void> adminSendNotice(int schoolId, String kind, {DateTime? blockOn, String? title, String? text});
+  Future<void> adminBlock(int schoolId, String reason);
+  Future<void> adminUnblock(int schoolId);
   Future<void> restoreSession(int slotId, DateTime date);
   Future<List<CancelledSession>> upcomingCancellations();
   Future<String> headcountCsv(int yearId);
@@ -317,7 +341,10 @@ class HttpRepo implements SchoolRepo {
   @override
   Future<List<AbsenceRow>> childAbsences(int enrollmentId) async => [
         for (final j in await _get<List<dynamic>>('/v1/parent/children/$enrollmentId/absences'))
-          AbsenceRow(day: DateTime.parse((j as Map<String, dynamic>)['day'] as String), kind: j['kind'] as String, justified: j['justified'] == true, reason: j['reason'] as String?),
+          AbsenceRow(
+            day: DateTime.parse((j as Map<String, dynamic>)['day'] as String), kind: j['kind'] as String, justified: j['justified'] == true, reason: j['reason'] as String?,
+            course: j['course'] == null ? null : (subject: j['course']['subject'] as String, start: j['course']['start'] as String, end: j['course']['end'] as String),
+          ),
       ];
 
   @override
@@ -345,12 +372,110 @@ class HttpRepo implements SchoolRepo {
   Future<Week> childTimetable(int enrollmentId) async => Week.fromJson(await _get<Map<String, dynamic>>('/v1/parent/children/$enrollmentId/timetable'));
 
   @override
-  Future<void> cancelSession(int slotId, DateTime date, {required String reason, String? note}) =>
-      _send<Object?>('POST', '/v1/timetable/slots/$slotId/cancellations', body: {'on_date': isoDate(date), 'reason': reason, if ((note ?? '').trim().isNotEmpty) 'note': note!.trim()});
+  Future<void> cancelSession(int slotId, DateTime date, {required String reason, String? note, int? substituteStaffId}) => _send<Object?>('POST', '/v1/timetable/slots/$slotId/cancellations',
+      body: {'on_date': isoDate(date), 'reason': reason, if ((note ?? '').trim().isNotEmpty) 'note': note!.trim(), if (substituteStaffId != null) 'substitute_staff_id': substituteStaffId});
 
   @override
   Future<void> restoreSession(int slotId, DateTime date) => _send<Object?>('DELETE', '/v1/timetable/slots/$slotId/cancellations/${isoDate(date)}');
 
   @override
   Future<List<CancelledSession>> upcomingCancellations() async => [for (final j in await _get<List<dynamic>>('/v1/timetable/cancellations')) CancelledSession.fromJson(j as Map<String, dynamic>)];
+
+  @override
+  Future<void> setSubstitute(int slotId, DateTime date, int? staffId) => _send<Object?>('PUT', '/v1/timetable/slots/$slotId/cancellations/${isoDate(date)}/substitute', body: {'staff_id': staffId});
+
+  @override
+  Future<List<TeacherRef>> teachers() async => [for (final j in await _get<List<dynamic>>('/v1/teachers')) TeacherRef(id: (j as Map<String, dynamic>)['id'] as int, name: j['name'] as String)];
+
+  @override
+  Future<List<RollRow>> courseRoll(int slotId, DateTime date) async =>
+      [for (final j in (await _get<Map<String, dynamic>>('/v1/timetable/slots/$slotId/roll', q: {'on_date': isoDate(date)}))['rows'] as List) RollRow.fromJson(j as Map<String, dynamic>)];
+
+  @override
+  Future<({int recorded, int notified})> saveCourseRoll(int slotId, DateTime date, List<({int enrollmentId, String kind, bool justified})> notPresent) async {
+    final j = await _send<Map<String, dynamic>>('PUT', '/v1/timetable/slots/$slotId/roll', body: {
+      'on_date': isoDate(date),
+      'entries': [for (final e in notPresent) {'enrollment_id': e.enrollmentId, 'kind': e.kind, 'justified': e.justified}],
+    });
+    return (recorded: j['recorded'] as int, notified: j['notified'] as int);
+  }
+
+  @override
+  Future<List<AbsenceReport>> classAbsenceReports(int classroomId, DateTime day) async =>
+      [for (final j in await _get<List<dynamic>>('/v1/classrooms/$classroomId/absence-reports', q: {'day': isoDate(day)})) AbsenceReport.fromJson({...(j as Map<String, dynamic>), 'day': isoDate(day)})];
+
+  @override
+  Future<void> reportAbsence(int enrollmentId, DateTime day, {required String reason, String? note}) =>
+      _send<Object?>('POST', '/v1/parent/children/$enrollmentId/absence-reports', body: {'day': isoDate(day), 'reason': reason, if ((note ?? '').trim().isNotEmpty) 'note': note!.trim()});
+
+  @override
+  Future<List<AbsenceReport>> childAbsenceReports(int enrollmentId) async =>
+      [for (final j in await _get<List<dynamic>>('/v1/parent/children/$enrollmentId/absence-reports')) AbsenceReport.fromJson(j as Map<String, dynamic>)];
+
+  @override
+  Future<void> withdrawAbsenceReport(int enrollmentId, DateTime day) => _send<Object?>('DELETE', '/v1/parent/children/$enrollmentId/absence-reports/${isoDate(day)}');
+
+  Future<Uint8List?> _bytes(String path) async {
+    try {
+      final r = await _d.get<List<int>>(path, options: Options(responseType: ResponseType.bytes));
+      return Uint8List.fromList(r.data!);
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return null;
+      throw mapError(e);
+    }
+  }
+
+  @override
+  Future<Uint8List?> schoolLogo() => _bytes('/v1/school/logo');
+
+  @override
+  Future<Uint8List?> parentSchoolLogo(int schoolId) => _bytes('/v1/parent/schools/$schoolId/logo');
+
+  @override
+  Future<void> uploadLogo(Uint8List bytes, String contentType) async {
+    try {
+      await _d.put<Object?>('/v1/school/logo', data: Stream.fromIterable([bytes]), options: Options(contentType: contentType, headers: {Headers.contentLengthHeader: bytes.length}));
+    } catch (e) {
+      throw mapError(e);
+    }
+  }
+
+  @override
+  Future<void> deleteLogo() => _send<Object?>('DELETE', '/v1/school/logo');
+
+  @override
+  Future<void> setAutoWhatsapp(bool on) => _send<Object?>('PUT', '/v1/school/settings', body: {'auto_whatsapp': on});
+
+  @override
+  Future<MessageLog> messages({String? status}) async => MessageLog.fromJson(await _get<Map<String, dynamic>>('/v1/messages', q: {if (status != null) 'status': status}));
+
+  @override
+  Future<BillingInfo> billing() async => BillingInfo.fromJson(await _get<Map<String, dynamic>>('/v1/billing'));
+
+  @override
+  Future<void> markNoticeSeen(int id) => _send<Object?>('POST', '/v1/billing/notices/$id/seen');
+
+  @override
+  Future<List<AdminSchool>> adminSchools() async => [for (final j in await _get<List<dynamic>>('/v1/platform/schools')) AdminSchool.fromJson(j as Map<String, dynamic>)];
+
+  @override
+  Future<AdminSchoolDetail> adminSchool(int id) async => AdminSchoolDetail.fromJson(await _get<Map<String, dynamic>>('/v1/platform/schools/$id'));
+
+  @override
+  Future<void> adminSetSubscription(int schoolId, {required int monthlyAmount, required int billingDay, required DateTime startedOn, int graceDays = 5}) =>
+      _send<Object?>('PUT', '/v1/platform/schools/$schoolId/subscription', body: {'monthly_amount': monthlyAmount, 'billing_day': billingDay, 'started_on': isoDate(startedOn), 'grace_days': graceDays});
+
+  @override
+  Future<void> adminRecordPayment(int schoolId, {required int amount, required String method, String? reference, DateTime? paidOn}) =>
+      _send<Object?>('POST', '/v1/platform/schools/$schoolId/payments', body: {'amount': amount, 'method': method, if ((reference ?? '').trim().isNotEmpty) 'reference': reference!.trim(), if (paidOn != null) 'paid_on': isoDate(paidOn)});
+
+  @override
+  Future<void> adminSendNotice(int schoolId, String kind, {DateTime? blockOn, String? title, String? text}) =>
+      _send<Object?>('POST', '/v1/platform/schools/$schoolId/notices', body: {'kind': kind, if (blockOn != null) 'block_on': isoDate(blockOn), if (title != null) 'title': title, if (text != null) 'text': text});
+
+  @override
+  Future<void> adminBlock(int schoolId, String reason) => _send<Object?>('POST', '/v1/platform/schools/$schoolId/block', body: {'reason': reason.trim()});
+
+  @override
+  Future<void> adminUnblock(int schoolId) => _send<Object?>('POST', '/v1/platform/schools/$schoolId/unblock');
 }

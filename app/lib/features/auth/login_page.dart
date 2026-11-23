@@ -23,6 +23,8 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   final _code = TextEditingController();
   bool _activating = false;
   bool _parent = false; // sign in to the parent space instead of the staff app
+  bool _team = false; // the Scolaris team: password + authenticator code
+  final _totp = TextEditingController();
   bool _register = false; // a parent creating her account
   final _name = TextEditingController();
   bool _hidden = true;
@@ -36,6 +38,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     _password.dispose();
     _code.dispose();
     _name.dispose();
+    _totp.dispose();
     super.dispose();
   }
 
@@ -62,7 +65,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       if (_activating) {
         await session.activate(_phone.text, _code.text, _password.text, parent: _parent);
       } else {
-        await session.signIn(_phone.text, _password.text, parent: _parent);
+        await session.signIn(_phone.text, _password.text, parent: _parent, admin: _team, totp: _totp.text);
       }
     } catch (e) {
       final err = mapError(e);
@@ -101,17 +104,22 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     const SizedBox(height: Space.sm),
                     Text(_activating ? S.activateHelp : "Gestion scolaire pour l'équipe de l'école.", style: t.bodyMedium?.copyWith(color: Palette.body)),
                     const SizedBox(height: Space.lg),
-                    SegmentedButton<bool>(
-                      segments: const [ButtonSegment(value: false, label: Text(S.imStaff), icon: Icon(Icons.badge_outlined)), ButtonSegment(value: true, label: Text(S.imParent), icon: Icon(Icons.family_restroom_outlined))],
-                      selected: {_parent},
-                      onSelectionChanged: _busy ? null : (s) => setState(() {
-                        _parent = s.first;
-                        _register = false;
-                        _activating = false;
-                        _error = null;
-                        _info = null;
-                      }),
-                    ),
+                    Wrap(spacing: Space.sm, runSpacing: Space.sm, children: [
+                      for (final (label, icon, parent, team) in const [(S.imStaff, Icons.badge_outlined, false, false), (S.imParent, Icons.family_restroom_outlined, true, false), (S.imTeam, Icons.admin_panel_settings_outlined, false, true)])
+                        ChoiceChip(
+                          avatar: Icon(icon, size: 18),
+                          label: Text(label),
+                          selected: _parent == parent && _team == team,
+                          onSelected: _busy ? null : (_) => setState(() {
+                            _parent = parent;
+                            _team = team;
+                            _register = false;
+                            _activating = false;
+                            _error = null;
+                            _info = null;
+                          }),
+                        ),
+                    ]),
                     const SizedBox(height: Space.lg),
                     if (_info != null) ...[InfoBanner(_info!, icon: Icons.check_circle_outline), const SizedBox(height: Space.md)],
                     if (notice != null && _error == null) ...[InfoBanner(notice), const SizedBox(height: Space.md)],
@@ -155,6 +163,17 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       ),
                       validator: (v) => (v == null || v.isEmpty) ? S.required : ((_activating && !_parent) || _register) && v.length < 10 ? 'Au moins 10 caractères' : null,
                     ),
+                    if (_team) ...[
+                      const SizedBox(height: Space.md),
+                      TextFormField(
+                        controller: _totp,
+                        keyboardType: TextInputType.number,
+                        maxLength: 6,
+                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                        decoration: const InputDecoration(labelText: S.totpCode, counterText: '', prefixIcon: Icon(Icons.pin_outlined)),
+                        validator: (v) => (v ?? '').length != 6 ? 'Le code a 6 chiffres' : null,
+                      ),
+                    ],
                     if (_error != null) ...[
                       const SizedBox(height: Space.md),
                       Semantics(liveRegion: true, child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -166,7 +185,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     const SizedBox(height: Space.lg),
                     BusyButton(label: _register ? S.createAccount : _activating ? S.activate : S.signIn, onPressed: _submit, busy: _busy),
                     const SizedBox(height: Space.sm),
-                    TextButton(
+                    if (!_team) TextButton(
                       onPressed: _busy ? null : () => setState(() {
                         _activating = !_activating;
                         _register = false;
@@ -175,7 +194,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       }),
                       child: Text(_activating || _register ? S.backToSignIn : S.haveCode),
                     ),
-                    if (_parent && !_activating && !_register) TextButton(onPressed: _busy ? null : () => setState(() { _register = true; _error = null; }), child: const Text(S.createAccount)),
+                    if (_parent && !_team && !_activating && !_register) TextButton(onPressed: _busy ? null : () => setState(() { _register = true; _error = null; }), child: const Text(S.createAccount)),
                   ]),
                 ),
               ),

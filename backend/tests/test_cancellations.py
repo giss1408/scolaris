@@ -40,7 +40,7 @@ def cancel(client, h, slot, day=NEXT_MON, reason="maladie", note=None):
 async def test_a_teacher_cancels_one_session_with_a_reason(client, school, freeze):
     room, e, sub, ids = await plan(client, school)
     r = await cancel(client, school["teacher"], ids["m_am"], reason="maladie", note="Grippe")
-    assert r.status_code == 201 and r.json() == {"slot_id": ids["m_am"], "date": "2026-11-30", "reason": "maladie", "note": "Grippe"}
+    assert r.status_code == 201 and r.json() == {"slot_id": ids["m_am"], "date": "2026-11-30", "reason": "maladie", "note": "Grippe", "substitute": None, "families_notified": 0}  # no replacement, and the school did not switch automatic messages on
     # the period stays; only that date is cancelled (the same period next week is untouched)
     tt = (await client.get(f"/v1/classrooms/{room['id']}/timetable", headers=school["director"])).json()
     assert len(tt["slots"]) == 3 and tt["cancellations"] == [{"slot_id": ids["m_am"], "date": "2026-11-30", "reason": "maladie", "note": "Grippe"}]

@@ -4,13 +4,21 @@ DateTime _d(Object? v) => DateTime.parse(v as String);
 
 @immutable
 class Me {
-  const Me({required this.staffId, required this.name, required this.role, required this.schoolName, this.city, this.yearId, this.yearLabel, this.levels = const {}, this.feeKinds = const [], this.methods = const []});
+  const Me({required this.staffId, required this.name, required this.role, required this.schoolName, this.city, this.yearId, this.yearLabel, this.levels = const {}, this.feeKinds = const [], this.methods = const [], this.hasLogo = false, this.logoVersion, this.autoWhatsapp = false, this.banner});
   final int staffId;
   final String name, role, schoolName;
   final String? city, yearLabel;
   final int? yearId;
   final Map<String, List<String>> levels;
   final List<String> feeKinds, methods;
+  final bool hasLogo, autoWhatsapp;
+
+  /// Changes when the logo changes: the app fetches the image again only then.
+  final String? logoVersion;
+
+  /// What the Scolaris team told the school about its subscription (director and secretary only).
+  final BillingBanner? banner;
+  bool get blocked => banner?.level == 'blocked';
 
   bool get isDirector => role == 'director';
   bool get canCollect => role == 'director' || role == 'accountant';
@@ -31,8 +39,25 @@ class Me {
       levels: {for (final e in ((cat['levels'] as Map?) ?? const {}).entries) e.key as String: List<String>.from(e.value as List)},
       feeKinds: List<String>.from((cat['fee_kinds'] as List?) ?? const []),
       methods: List<String>.from((cat['methods'] as List?) ?? const []),
+      hasLogo: j['school']['has_logo'] == true,
+      logoVersion: j['school']['logo_version'] as String?,
+      autoWhatsapp: j['school']['auto_whatsapp'] == true,
+      banner: j['billing_banner'] == null ? null : BillingBanner.fromJson(j['billing_banner'] as Map<String, dynamic>),
     );
   }
+}
+
+/// The line at the top of the app: `late` (reminder), `final` (final notice with a date), `blocked`, or `info` (unread notices).
+@immutable
+class BillingBanner {
+  const BillingBanner({required this.level, required this.title, required this.text, this.blockOn, this.unseen = 0});
+  final String level, title, text;
+  final DateTime? blockOn;
+  final int unseen;
+  factory BillingBanner.fromJson(Map<String, dynamic> j) => BillingBanner(
+        level: j['level'] as String, title: (j['title'] as String?) ?? '', text: (j['text'] as String?) ?? '', unseen: (j['unseen'] as int?) ?? 0,
+        blockOn: j['block_on'] == null ? null : DateTime.parse(j['block_on'] as String),
+      );
 }
 
 @immutable
@@ -339,22 +364,28 @@ class ReminderItem {
 
 @immutable
 class ChildRow {
-  const ChildRow({required this.enrollmentId, required this.name, required this.school, required this.classroom, required this.year, required this.remaining, required this.overdue, required this.totalDue});
-  final int enrollmentId, remaining, overdue, totalDue;
+  const ChildRow({required this.enrollmentId, required this.name, required this.school, required this.classroom, required this.year, required this.remaining, required this.overdue, required this.totalDue, this.schoolId = 0, this.hasLogo = false, this.logoVersion, this.blocked = false});
+  final int enrollmentId, remaining, overdue, totalDue, schoolId;
   final String name, school, classroom, year;
+  final bool hasLogo, blocked;
+  final String? logoVersion;
   factory ChildRow.fromJson(Map<String, dynamic> j) => ChildRow(
         enrollmentId: j['enrollment_id'] as int, name: j['name'] as String, school: j['school'] as String, classroom: j['classroom'] as String, year: j['year'] as String,
         remaining: j['balance']['remaining'] as int, overdue: j['balance']['overdue'] as int, totalDue: j['balance']['total_due'] as int,
+        schoolId: (j['school_id'] as int?) ?? 0, hasLogo: j['has_logo'] == true, logoVersion: j['logo_version'] as String?, blocked: j['blocked'] == true,
       );
 }
 
 @immutable
 class AbsenceRow {
-  const AbsenceRow({required this.day, required this.kind, required this.justified, this.reason});
+  const AbsenceRow({required this.day, required this.kind, required this.justified, this.reason, this.course});
   final DateTime day;
   final String kind;
   final bool justified;
   final String? reason;
+
+  /// Set when the absence was noted during a course (the subject and its hours).
+  final ({String subject, String start, String end})? course;
 }
 
 @immutable
@@ -390,21 +421,26 @@ class TimetableTeacher {
 /// One session of a period that will not take place. `reason` is only sent to the administration and to the teacher concerned.
 @immutable
 class Cancellation {
-  const Cancellation({required this.slotId, required this.date, this.reason, this.note});
+  const Cancellation({required this.slotId, required this.date, this.reason, this.note, this.substitute, this.substituteId});
   final int slotId;
   final DateTime date;
-  final String? reason, note;
+  final String? reason, note, substitute;
+  final int? substituteId;
   bool matches(int slot, DateTime day) => slotId == slot && date.year == day.year && date.month == day.month && date.day == day.day;
-  factory Cancellation.fromJson(Map<String, dynamic> j) => Cancellation(slotId: j['slot_id'] as int, date: DateTime.parse(j['date'] as String), reason: j['reason'] as String?, note: j['note'] as String?);
+  factory Cancellation.fromJson(Map<String, dynamic> j) => Cancellation(slotId: j['slot_id'] as int, date: DateTime.parse(j['date'] as String), reason: j['reason'] as String?, note: j['note'] as String?, substitute: j['substitute'] as String?, substituteId: j['substitute_id'] as int?);
 }
 
 /// Periods of a week and the sessions cancelled around today.
 @immutable
 class Week {
-  const Week({required this.slots, this.cancellations = const []});
+  const Week({required this.slots, this.cancellations = const [], this.substitutions = const []});
   final List<Slot> slots;
   final List<Cancellation> cancellations;
+
+  /// Sessions this teacher covers for a colleague, each with its date.
+  final List<({Slot slot, DateTime date})> substitutions;
   factory Week.fromJson(Map<String, dynamic> j) => Week(
+        substitutions: [for (final s in (j['substitutions'] as List?) ?? const []) (slot: Slot.fromJson(s as Map<String, dynamic>), date: DateTime.parse(s['date'] as String))],
         slots: [for (final s in j['slots'] as List) Slot.fromJson(s as Map<String, dynamic>)],
         cancellations: [for (final c in (j['cancellations'] as List?) ?? const []) Cancellation.fromJson(c as Map<String, dynamic>)],
       );
@@ -413,14 +449,14 @@ class Week {
 /// A cancelled session as the administration sees it, with the message to send to the families.
 @immutable
 class CancelledSession {
-  const CancelledSession({required this.slotId, required this.date, required this.start, required this.end, required this.classroom, required this.subject, required this.reason, required this.message, this.teacher, this.note});
+  const CancelledSession({required this.slotId, required this.date, required this.start, required this.end, required this.classroom, required this.subject, required this.reason, required this.message, this.teacher, this.note, this.substitute});
   final int slotId;
   final DateTime date;
   final String start, end, classroom, subject, reason, message;
-  final String? teacher, note;
+  final String? teacher, note, substitute;
   factory CancelledSession.fromJson(Map<String, dynamic> j) => CancelledSession(
         slotId: j['slot_id'] as int, date: DateTime.parse(j['date'] as String), start: j['start'] as String, end: j['end'] as String, classroom: j['classroom'] as String,
-        subject: j['subject'] as String, teacher: j['teacher'] as String?, reason: j['reason'] as String, note: j['note'] as String?, message: j['message'] as String,
+        subject: j['subject'] as String, teacher: j['teacher'] as String?, reason: j['reason'] as String, note: j['note'] as String?, message: j['message'] as String, substitute: j['substitute'] as String?,
       );
 }
 
@@ -437,4 +473,151 @@ class ClassTimetable {
         editable: j['editable'] == true,
         teachers: [for (final t in (j['teachers'] as List?) ?? const []) TimetableTeacher(id: t['id'] as int, name: t['name'] as String, subjectIds: (t['subject_ids'] as List?)?.cast<int>())],
       );
+}
+
+/// One pupil in the roll call of a COURSE: present, absent or late; with what the parents reported for the day.
+@immutable
+class RollRow {
+  const RollRow({required this.enrollmentId, required this.name, this.status = 'present', this.justified = false, this.absentAllDay = false, this.reportedReason, this.reportedNote});
+  final int enrollmentId;
+  final String name, status;
+  final bool justified, absentAllDay;
+  final String? reportedReason, reportedNote;
+  factory RollRow.fromJson(Map<String, dynamic> j) => RollRow(
+        enrollmentId: j['enrollment_id'] as int, name: j['name'] as String, status: j['status'] as String, justified: j['justified'] == true, absentAllDay: j['absent_all_day'] == true,
+        reportedReason: (j['reported'] as Map?)?['reason'] as String?, reportedNote: (j['reported'] as Map?)?['note'] as String?,
+      );
+}
+
+/// An absence a parent reported for a day.
+@immutable
+class AbsenceReport {
+  const AbsenceReport({required this.day, required this.reason, this.note, this.enrollmentId, this.name, this.classroom});
+  final DateTime day;
+  final String reason;
+  final String? note, name, classroom;
+  final int? enrollmentId;
+  factory AbsenceReport.fromJson(Map<String, dynamic> j) => AbsenceReport(
+        day: DateTime.parse((j['day'] as String?) ?? DateTime.now().toIso8601String().substring(0, 10)), reason: j['reason'] as String, note: j['note'] as String?,
+        enrollmentId: j['enrollment_id'] as int?, name: j['name'] as String?, classroom: j['classroom'] as String?,
+      );
+}
+
+@immutable
+class TeacherRef {
+  const TeacherRef({required this.id, required this.name});
+  final int id;
+  final String name;
+}
+
+/// A message to a family and where it stands. `needsCall` = it could not go by WhatsApp: the staff phone instead.
+@immutable
+class MessageRow {
+  const MessageRow({required this.id, required this.family, required this.kind, required this.status, required this.text, required this.createdAt, required this.needsCall, this.detail});
+  final int id;
+  final String? family, detail;
+  final String kind, status, text;
+  final DateTime createdAt;
+  final bool needsCall;
+  factory MessageRow.fromJson(Map<String, dynamic> j) => MessageRow(
+        id: j['id'] as int, family: j['family'] as String?, kind: j['kind'] as String, status: j['status'] as String, text: j['text'] as String, createdAt: DateTime.parse(j['created_at'] as String).toLocal(),
+        needsCall: j['needs_call'] == true, detail: j['detail'] as String?,
+      );
+}
+
+@immutable
+class MessageLog {
+  const MessageLog({required this.summary, required this.items});
+  final Map<String, int> summary;
+  final List<MessageRow> items;
+  factory MessageLog.fromJson(Map<String, dynamic> j) => MessageLog(
+        summary: {for (final e in (j['summary'] as Map).entries) e.key as String: e.value as int},
+        items: [for (final i in j['items'] as List) MessageRow.fromJson(i as Map<String, dynamic>)],
+      );
+}
+
+/// What a school owes the Scolaris team: its monthly subscription.
+@immutable
+class Standing {
+  const Standing({required this.monthlyAmount, required this.billingDay, required this.remaining, required this.overdueMonths, required this.oldestLateDays, required this.late, required this.nextDue, this.billed = 0, this.paid = 0, this.graceDays = 5});
+  final int monthlyAmount, billingDay, remaining, overdueMonths, oldestLateDays, billed, paid, graceDays;
+  final bool late;
+  final DateTime nextDue;
+  factory Standing.fromJson(Map<String, dynamic> j) => Standing(
+        monthlyAmount: j['monthly_amount'] as int, billingDay: (j['billing_day'] as int?) ?? 5, remaining: j['remaining'] as int, overdueMonths: j['overdue_months'] as int, oldestLateDays: j['oldest_late_days'] as int,
+        late: j['late'] == true, nextDue: DateTime.parse(j['next_due'] as String), billed: (j['billed'] as int?) ?? 0, paid: (j['paid'] as int?) ?? 0, graceDays: (j['grace_days'] as int?) ?? 5,
+      );
+}
+
+@immutable
+class Notice {
+  const Notice({required this.id, required this.kind, required this.title, required this.text, required this.createdAt, this.blockOn, this.seen = false, this.seenBy = 0, this.audience = 0});
+  final int id, seenBy, audience;
+  final String kind, title, text;
+  final DateTime createdAt;
+  final DateTime? blockOn;
+  final bool seen;
+  factory Notice.fromJson(Map<String, dynamic> j) => Notice(
+        id: j['id'] as int, kind: j['kind'] as String, title: j['title'] as String, text: j['text'] as String, createdAt: DateTime.parse(j['created_at'] as String).toLocal(),
+        blockOn: j['block_on'] == null ? null : DateTime.parse(j['block_on'] as String), seen: j['seen'] == true, seenBy: (j['seen_by'] as int?) ?? 0, audience: (j['audience'] as int?) ?? 0,
+      );
+}
+
+@immutable
+class BillingInfo {
+  const BillingInfo({required this.status, this.standing, this.notices = const []});
+  final String status;
+  final Standing? standing;
+  final List<Notice> notices;
+  factory BillingInfo.fromJson(Map<String, dynamic> j) => BillingInfo(
+        status: j['status'] as String, standing: j['standing'] == null ? null : Standing.fromJson(j['standing'] as Map<String, dynamic>),
+        notices: [for (final n in j['notices'] as List) Notice.fromJson(n as Map<String, dynamic>)],
+      );
+}
+
+/// A school as the Scolaris team sees it.
+@immutable
+class AdminSchool {
+  const AdminSchool({required this.id, required this.name, required this.status, required this.reminders, required this.finalNotices, this.city, this.standing});
+  final int id, reminders, finalNotices;
+  final String name, status;
+  final String? city;
+  final Standing? standing;
+  bool get blocked => status == 'blocked';
+  factory AdminSchool.fromJson(Map<String, dynamic> j) => AdminSchool(
+        id: j['id'] as int, name: j['name'] as String, status: j['status'] as String, city: j['city'] as String?, reminders: j['reminders'] as int, finalNotices: j['final_notices'] as int,
+        standing: j['subscription'] == null ? null : Standing.fromJson(j['subscription'] as Map<String, dynamic>),
+      );
+}
+
+@immutable
+class AdminPayment {
+  const AdminPayment({required this.amount, required this.method, required this.paidOn, this.reference});
+  final int amount;
+  final String method;
+  final DateTime paidOn;
+  final String? reference;
+}
+
+@immutable
+class AdminSchoolDetail {
+  const AdminSchoolDetail({required this.school, required this.notices, required this.payments, required this.reminders, required this.finalNotices, this.standing, this.blockedReason, this.lastFinalBlockOn});
+  final AdminSchool school;
+  final Standing? standing;
+  final List<Notice> notices;
+  final List<AdminPayment> payments;
+  final int reminders, finalNotices;
+  final String? blockedReason;
+  final DateTime? lastFinalBlockOn;
+  factory AdminSchoolDetail.fromJson(Map<String, dynamic> j) {
+    final s = j['school'] as Map<String, dynamic>;
+    final st = j['subscription'] == null ? null : Standing.fromJson(j['subscription'] as Map<String, dynamic>);
+    return AdminSchoolDetail(
+      school: AdminSchool(id: s['id'] as int, name: s['name'] as String, status: s['status'] as String, city: s['city'] as String?, reminders: j['reminders'] as int, finalNotices: j['final_notices'] as int, standing: st),
+      standing: st, reminders: j['reminders'] as int, finalNotices: j['final_notices'] as int, blockedReason: s['blocked_reason'] as String?,
+      lastFinalBlockOn: j['last_final_block_on'] == null ? null : DateTime.parse(j['last_final_block_on'] as String),
+      notices: [for (final n in j['notices'] as List) Notice.fromJson(n as Map<String, dynamic>)],
+      payments: [for (final p in j['payments'] as List) AdminPayment(amount: p['amount'] as int, method: p['method'] as String, paidOn: DateTime.parse(p['paid_on'] as String), reference: p['reference'] as String?)],
+    );
+  }
 }

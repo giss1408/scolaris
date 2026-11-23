@@ -360,3 +360,49 @@ Future<bool> confirmDialog(BuildContext context, {required String title, require
   );
   return ok ?? false;
 }
+
+/// A dialog with one text field. It owns its controller, so nothing is used after being disposed while the dialog animates away.
+Future<String?> askText(BuildContext context, {required String title, required String label, String? message, String confirm = S.save, bool danger = false, int minLength = 1}) => showDialog<String>(
+      context: context,
+      builder: (_) => _AskText(title: title, label: label, message: message, confirm: confirm, danger: danger, minLength: minLength),
+    );
+
+class _AskText extends StatefulWidget {
+  const _AskText({required this.title, required this.label, required this.message, required this.confirm, required this.danger, required this.minLength});
+  final String title, label, confirm;
+  final String? message;
+  final bool danger;
+  final int minLength;
+
+  @override
+  State<_AskText> createState() => _AskTextState();
+}
+
+class _AskTextState extends State<_AskText> {
+  final _c = TextEditingController();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: Text(widget.title),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (widget.message != null) ...[Text(widget.message!), const SizedBox(height: Space.md)],
+          TextField(controller: _c, autofocus: true, textCapitalization: TextCapitalization.sentences, decoration: InputDecoration(labelText: widget.label)),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text(S.cancel)),
+          TextButton(
+            onPressed: () {
+              if (_c.text.trim().length >= widget.minLength) Navigator.pop(context, _c.text.trim());
+            },
+            style: widget.danger ? TextButton.styleFrom(foregroundColor: Palette.danger) : null,
+            child: Text(widget.confirm),
+          ),
+        ],
+      );
+}

@@ -19,7 +19,10 @@ class WeekView extends StatefulWidget {
     this.onDelete,
     this.onCancel,
     this.onRestore,
+    this.onSubstitute,
+    this.onRoll,
     this.canCancel,
+    this.substitutions = const [],
     this.now,
     this.emptyMessage = S.noWeek,
     this.bottomPadding = Space.xl,
@@ -32,7 +35,16 @@ class WeekView extends StatefulWidget {
   /// Cancel / restore ONE session (a date) of a period. Only offered for sessions that have not taken place yet, and where `canCancel` allows it.
   final void Function(Slot, DateTime)? onCancel;
   final void Function(Slot, DateTime)? onRestore;
+
+  /// Choose or change the replacement teacher of a cancelled session (director, secretary).
+  final void Function(Slot, DateTime)? onSubstitute;
+
+  /// Call the roll of a session that has started today. Offered to the teacher of the period or her replacement.
+  final void Function(Slot, DateTime)? onRoll;
   final bool Function(Slot)? canCancel;
+
+  /// Sessions this teacher covers for a colleague (shown on their date, with a "Remplacement" badge).
+  final List<({Slot slot, DateTime date})> substitutions;
   final DateTime? now;
   final String emptyMessage;
   final double bottomPadding;
@@ -65,7 +77,9 @@ class _WeekViewState extends State<WeekView> {
     final nowMin = _now.hour * 60 + _now.minute;
     final date = _dateOf(_day);
     final isToday = date == todayDate;
-    final slots = widget.slots.where((s) => s.weekday == _day).toList()..sort((a, b) => a.startMinutes.compareTo(b.startMinutes));
+    final covering = widget.substitutions.where((x) => x.date == date).map((x) => x.slot).toList();
+    final slots = [...widget.slots.where((s) => s.weekday == _day), ...covering]..sort((a, b) => a.startMinutes.compareTo(b.startMinutes));
+    bool isCover(Slot s) => covering.any((c) => c.id == s.id);
     bool cancelled(Slot s) => widget.cancellations.any((c) => c.matches(s.id, date));
     final next = isToday ? slots.where((s) => s.startMinutes > nowMin && !cancelled(s)).firstOrNull : null;
     return Column(children: [
@@ -103,8 +117,10 @@ class _WeekViewState extends State<WeekView> {
                 separatorBuilder: (_, __) => const SizedBox(height: Space.sm),
                 itemBuilder: (context, i) {
                   final s = slots[i];
-                  final c = widget.cancellations.where((x) => x.matches(s.id, date)).firstOrNull;
+                  final cover = isCover(s);
+                  final c = cover ? null : widget.cancellations.where((x) => x.matches(s.id, date)).firstOrNull;
                   final isCancelled = c != null;
+                  final started = isToday && nowMin >= s.startMinutes;
                   final over = date.isBefore(todayDate) || (isToday && nowMin >= s.endMinutes);
                   final live = !isCancelled && isToday && nowMin >= s.startMinutes && nowMin < s.endMinutes;
                   final allowed = widget.canCancel?.call(s) ?? true;
@@ -126,20 +142,26 @@ class _WeekViewState extends State<WeekView> {
                             Text(widget.showClass ? '${s.subject} · ${s.classroom}' : s.subject, style: titleStyle),
                             const SizedBox(height: 2),
                             Text([if (widget.showTeacher) s.teacher ?? S.noTeacher, if (s.room != null) '${S.room} ${s.room}'].join(' · '), style: t.bodySmall),
+                            if (cover) const Padding(padding: EdgeInsets.only(top: Space.sm), child: StatusBadge(S.replacement, tone: Tone.info, icon: Icons.swap_horiz_outlined)),
                             if (isCancelled)
                               Padding(
                                 padding: const EdgeInsets.only(top: Space.sm),
                                 child: Wrap(spacing: Space.sm, runSpacing: Space.xs, children: [
                                   const StatusBadge(S.courseCancelled, tone: Tone.danger, icon: Icons.event_busy_outlined),
                                   if (c.reason != null) StatusBadge(S.reasonLabel(c.reason!), icon: Icons.info_outline),
+                                  if (c.substitute != null) StatusBadge(S.replacedBy(c.substitute!), tone: Tone.info, icon: Icons.swap_horiz_outlined),
                                 ]),
                               ),
                             if (isCancelled && c.note != null) Padding(padding: const EdgeInsets.only(top: Space.xs), child: Text(c.note!, style: t.bodySmall)),
                             if (live || identical(s, next)) Padding(padding: const EdgeInsets.only(top: Space.sm), child: StatusBadge(live ? S.nowBadge : S.nextBadge, tone: live ? Tone.success : Tone.info, icon: live ? Icons.play_circle_outline : Icons.schedule_outlined)),
                             if (!over && allowed && !isCancelled && widget.onCancel != null)
                               Align(alignment: Alignment.centerLeft, child: TextButton.icon(onPressed: () => widget.onCancel!(s, date), icon: const Icon(Icons.event_busy_outlined), label: const Text(S.cancelCourse))),
+                            if (!over && isCancelled && widget.onSubstitute != null)
+                              Align(alignment: Alignment.centerLeft, child: TextButton.icon(onPressed: () => widget.onSubstitute!(s, date), icon: const Icon(Icons.swap_horiz_outlined), label: Text(c.substitute == null ? S.chooseSubstitute : S.changeSubstitute))),
                             if (!over && allowed && isCancelled && widget.onRestore != null)
                               Align(alignment: Alignment.centerLeft, child: TextButton.icon(onPressed: () => widget.onRestore!(s, date), icon: const Icon(Icons.restore_outlined), label: const Text(S.restoreCourse))),
+                            if (started && !isCancelled && widget.onRoll != null && (allowed || cover))
+                              Align(alignment: Alignment.centerLeft, child: TextButton.icon(onPressed: () => widget.onRoll!(s, date), icon: const Icon(Icons.fact_check_outlined), label: const Text(S.doRoll))),
                           ]),
                         ),
                         if (widget.onDelete != null) IconButton(tooltip: S.remove, icon: const Icon(Icons.delete_outline), onPressed: () => widget.onDelete!(s)),

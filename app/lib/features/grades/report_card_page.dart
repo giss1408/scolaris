@@ -7,6 +7,7 @@ import '../../core/errors.dart';
 import '../../core/models.dart';
 import '../../core/providers.dart';
 import '../../core/repo.dart';
+import '../../core/school_logo.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
 import '../../core/ui.dart';
@@ -45,6 +46,7 @@ class ReportCardPage extends ConsumerWidget {
         onRetry: () => ref.invalidate(parent ? childReportCardProvider(key) : reportCardProvider(key)),
         loading: const Padding(padding: EdgeInsets.all(Space.md), child: SkeletonBox(height: 400, radius: Radii.md)),
         data: (c) => ListView(padding: const EdgeInsets.all(Space.md), children: [
+          if (me != null && me.hasLogo) Padding(padding: const EdgeInsets.only(bottom: Space.md), child: Center(child: SchoolLogo(name: c.school, version: me.logoVersion, size: 56))),
           _Paper(c),
           const SizedBox(height: Space.md),
           Row(children: [

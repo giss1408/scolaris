@@ -44,8 +44,8 @@ class AuthService {
 
   static String digits(String phone) => phone.replaceAll(RegExp(r'[\s.\-]'), '');
 
-  Future<Map<String, dynamic>> login(String phone, String password, {String app = Config.authApp}) async {
-    final r = await _dio.post<Map<String, dynamic>>('/v1/login', data: {'phone': digits(phone), 'password': password, 'product': Config.product, 'app': app});
+  Future<Map<String, dynamic>> login(String phone, String password, {String app = Config.authApp, String? totp}) async {
+    final r = await _dio.post<Map<String, dynamic>>('/v1/login', data: {'phone': digits(phone), 'password': password, 'product': Config.product, 'app': app, if (totp != null && totp.isNotEmpty) 'totp': totp});
     return r.data!;
   }
 
@@ -68,8 +68,8 @@ class AuthService {
   }
 
   /// Password re-proved: a fresh token (`amr` says so) for sensitive money actions.
-  Future<String> stepUp(String access, String password) async {
-    final r = await _dio.post<Map<String, dynamic>>('/v1/step-up', data: {'password': password}, options: Options(headers: {'Authorization': 'Bearer $access'}));
+  Future<String> stepUp(String access, String password, {String? totp}) async {
+    final r = await _dio.post<Map<String, dynamic>>('/v1/step-up', data: {'password': password, if (totp != null && totp.isNotEmpty) 'totp': totp}, options: Options(headers: {'Authorization': 'Bearer $access'}));
     return r.data!['access_token'] as String;
   }
 
@@ -81,12 +81,15 @@ class AuthService {
 enum SessionStatus { loading, signedOut, signedIn }
 
 class SessionState {
-  const SessionState(this.status, {this.me, this.notice, this.parent = false});
+  const SessionState(this.status, {this.me, this.notice, this.parent = false, this.admin = false});
   final SessionStatus status;
   final Me? me;
 
   /// Signed in as a parent (no staff profile): she gets the parent space.
   final bool parent;
+
+  /// Signed in as a member of the Scolaris team: the school administration space.
+  final bool admin;
 
   /// Shown once on the sign-in page (e.g. "session expired").
   final String? notice;
@@ -148,10 +151,10 @@ class SessionController extends Notifier<SessionState> {
     await _openProfile();
   }
 
-  Future<void> signIn(String phone, String password, {bool parent = false}) async {
+  Future<void> signIn(String phone, String password, {bool parent = false, bool admin = false, String? totp}) async {
     final Map<String, dynamic> t;
     try {
-      t = await _auth.login(phone, password, app: parent ? 'parent' : Config.authApp);
+      t = await _auth.login(phone, password, app: admin ? 'admin' : (parent ? 'parent' : Config.authApp), totp: totp);
     } catch (e) {
       throw mapError(e);
     }
@@ -206,21 +209,34 @@ class SessionController extends Notifier<SessionState> {
       state = const SessionState(SessionStatus.signedIn, parent: true);
       return;
     }
+    if (_role == 'platform_admin') {
+      state = const SessionState(SessionStatus.signedIn, admin: true);
+      return;
+    }
     try {
       final r = await ref.read(apiDioProvider).get<Map<String, dynamic>>('/v1/me');
       state = SessionState(SessionStatus.signedIn, me: Me.fromJson(r.data!));
     } catch (e) {
       final err = mapError(e);
       await _clear();
-      state = SessionState(SessionStatus.signedOut, notice: userMessage(err));
+      state = SessionState(SessionStatus.signedOut, notice: err.code == 'school_blocked' ? (err.message ?? userMessage(err)) : userMessage(err));
       if (state.notice != null && err.code == 'offline') return;
       throw err;
     }
   }
 
-  Future<void> stepUp(String password) async {
+  /// Reloads the staff profile (logo version, WhatsApp setting, subscription banner) after a change.
+  Future<void> refreshProfile() async {
+    if (state.status != SessionStatus.signedIn || state.parent || state.admin) return;
     try {
-      _access = await _auth.stepUp(_access!, password);
+      final r = await ref.read(apiDioProvider).get<Map<String, dynamic>>('/v1/me');
+      state = SessionState(SessionStatus.signedIn, me: Me.fromJson(r.data!));
+    } catch (_) {/* keep the profile we have */}
+  }
+
+  Future<void> stepUp(String password, {String? totp}) async {
+    try {
+      _access = await _auth.stepUp(_access!, password, totp: totp);
     } catch (e) {
       throw mapError(e);
     }

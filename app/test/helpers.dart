@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -13,18 +15,21 @@ Me meWith(String role, {int id = 1}) => Me(
     );
 
 class FakeSession extends SessionController {
-  FakeSession(this.me, {this.signInError});
+  FakeSession(this.me, {this.signInError, this.admin = false});
   final Me? me;
   final AppError? signInError;
+
+  /// Signed in as a member of the Scolaris team.
+  final bool admin;
   int signOuts = 0;
   final calls = <String>[];
 
   @override
-  SessionState build() => me == null ? const SessionState(SessionStatus.signedOut) : SessionState(SessionStatus.signedIn, me: me);
+  SessionState build() => me == null && !admin ? const SessionState(SessionStatus.signedOut) : SessionState(SessionStatus.signedIn, me: me, admin: admin);
 
   @override
-  Future<void> signIn(String phone, String password, {bool parent = false}) async {
-    calls.add('signIn parent=$parent');
+  Future<void> signIn(String phone, String password, {bool parent = false, bool admin = false, String? totp}) async {
+    calls.add('signIn parent=$parent admin=$admin totp=${totp ?? ''}');
     if (signInError != null) throw signInError!;
   }
 
@@ -33,6 +38,13 @@ class FakeSession extends SessionController {
 
   @override
   Future<void> activate(String phone, String code, String password, {bool parent = false}) async => calls.add('activate parent=$parent');
+
+  int refreshes = 0;
+  final stepUps = <({String password, String? totp})>[];
+  @override
+  Future<void> refreshProfile() async => refreshes++;
+  @override
+  Future<void> stepUp(String password, {String? totp}) async => stepUps.add((password: password, totp: totp));
 
   @override
   Future<void> signOut() async {
@@ -162,14 +174,130 @@ class FakeRepo implements SchoolRepo {
   @override
   Future<Week> childTimetable(int enrollmentId) async => Week(slots: timetable.slots, cancellations: cancellations);
   @override
-  Future<void> cancelSession(int slotId, DateTime date, {required String reason, String? note}) async {
+  Future<void> cancelSession(int slotId, DateTime date, {required String reason, String? note, int? substituteStaffId}) async {
     if (cancelError != null) throw cancelError!;
     cancelledCalls.add((slotId: slotId, date: date, reason: reason, note: note));
+    cancelSubstitutes.add(substituteStaffId);
   }
+  final cancelSubstitutes = <int?>[];
   @override
   Future<void> restoreSession(int slotId, DateTime date) async => restoredCalls.add((slotId: slotId, date: date));
   @override
   Future<List<CancelledSession>> upcomingCancellations() async => upcoming;
+
+  // ---- roll call of a course, parent reports, substitutes, logo, messages, subscription, platform team
+  List<RollRow> rollRows = const [
+    RollRow(enrollmentId: 10, name: 'KOUASSI Aya'),
+    RollRow(enrollmentId: 11, name: 'YAO Koffi', reportedReason: 'maladie', reportedNote: 'Palu'),
+    RollRow(enrollmentId: 12, name: 'ZADI Mariam', absentAllDay: true),
+  ];
+  final savedRolls = <({int slotId, DateTime date, List<({int enrollmentId, String kind, bool justified})> entries})>[];
+  int rollNotified = 2;
+  @override
+  Future<List<RollRow>> courseRoll(int slotId, DateTime date) async => rollRows;
+  @override
+  Future<({int recorded, int notified})> saveCourseRoll(int slotId, DateTime date, List<({int enrollmentId, String kind, bool justified})> notPresent) async {
+    savedRolls.add((slotId: slotId, date: date, entries: notPresent));
+    return (recorded: notPresent.length, notified: rollNotified);
+  }
+  @override
+  Future<List<AbsenceReport>> classAbsenceReports(int classroomId, DateTime day) async => const [];
+  List<TeacherRef> teacherRefs = const [TeacherRef(id: 3, name: 'Prof Math'), TeacherRef(id: 4, name: 'Prof Francais')];
+  final substitutes = <({int slotId, DateTime date, int? staffId})>[];
+  @override
+  Future<List<TeacherRef>> teachers() async => teacherRefs;
+  @override
+  Future<void> setSubstitute(int slotId, DateTime date, int? staffId) async => substitutes.add((slotId: slotId, date: date, staffId: staffId));
+  final reported = <({int enrollmentId, DateTime day, String reason, String? note})>[];
+  final withdrawn = <DateTime>[];
+  List<AbsenceReport> myReports = const [];
+  @override
+  Future<void> reportAbsence(int enrollmentId, DateTime day, {required String reason, String? note}) async => reported.add((enrollmentId: enrollmentId, day: day, reason: reason, note: note));
+  @override
+  Future<List<AbsenceReport>> childAbsenceReports(int enrollmentId) async => myReports;
+  @override
+  Future<void> withdrawAbsenceReport(int enrollmentId, DateTime day) async => withdrawn.add(day);
+  Uint8List? logoBytes;
+  final uploadedLogos = <String>[];
+  bool logoDeleted = false;
+  AppError? uploadError;
+  @override
+  Future<Uint8List?> schoolLogo() async => logoBytes;
+  @override
+  Future<Uint8List?> parentSchoolLogo(int schoolId) async => logoBytes;
+  @override
+  Future<void> uploadLogo(Uint8List bytes, String contentType) async {
+    if (uploadError != null) throw uploadError!;
+    uploadedLogos.add('$contentType:${bytes.length}');
+  }
+  @override
+  Future<void> deleteLogo() async => logoDeleted = true;
+  final autoCalls = <bool>[];
+  @override
+  Future<void> setAutoWhatsapp(bool on) async => autoCalls.add(on);
+  MessageLog messageLog = MessageLog(summary: const {'sent': 1, 'skipped': 1}, items: [
+    MessageRow(id: 1, family: 'KOUASSI', kind: 'absence', status: 'sent', text: 'Fanta a été noté(e) absent(e)…', createdAt: DateTime(2026, 11, 23), needsCall: false),
+    MessageRow(id: 2, family: 'BAMBA', kind: 'cancellation', status: 'skipped', text: 'Le cours de Maths est annulé.', createdAt: DateTime(2026, 11, 23), needsCall: true, detail: 'no_whatsapp_optin'),
+  ]);
+  String? lastMessagesFilter;
+  @override
+  Future<MessageLog> messages({String? status}) async {
+    lastMessagesFilter = status;
+    return status == null ? messageLog : MessageLog(summary: messageLog.summary, items: messageLog.items.where((m) => m.needsCall).toList());
+  }
+  BillingInfo billingInfo = BillingInfo(status: 'active', standing: Standing(monthlyAmount: 50000, billingDay: 5, remaining: 100000, overdueMonths: 2, oldestLateDays: 49, late: true, nextDue: DateTime(2026, 12, 5)), notices: [
+    Notice(id: 7, kind: 'reminder', title: 'Rappel : mensualité Scolaris en retard', text: 'La mensualité est en retard.', createdAt: DateTime(2026, 11, 20)),
+  ]);
+  final seenNotices = <int>[];
+  @override
+  Future<BillingInfo> billing() async => billingInfo;
+  @override
+  Future<void> markNoticeSeen(int id) async => seenNotices.add(id);
+  List<AdminSchool> adminList = [
+    AdminSchool(id: 1, name: 'Ecole Bloquée', status: 'blocked', reminders: 2, finalNotices: 1, standing: Standing(monthlyAmount: 50000, billingDay: 5, remaining: 150000, overdueMonths: 3, oldestLateDays: 80, late: true, nextDue: DateTime(2026, 12, 5))),
+    AdminSchool(id: 2, name: 'Ecole En Retard', status: 'active', reminders: 1, finalNotices: 0, standing: Standing(monthlyAmount: 30000, billingDay: 5, remaining: 60000, overdueMonths: 2, oldestLateDays: 40, late: true, nextDue: DateTime(2026, 12, 5))),
+    AdminSchool(id: 3, name: "Ecole A l'heure", status: 'active', reminders: 0, finalNotices: 0, standing: Standing(monthlyAmount: 30000, billingDay: 5, remaining: 0, overdueMonths: 0, oldestLateDays: 0, late: false, nextDue: DateTime(2026, 12, 5))),
+  ];
+  late AdminSchoolDetail adminDetail = AdminSchoolDetail(
+    school: adminList[1], standing: adminList[1].standing, reminders: 1, finalNotices: 0,
+    notices: [Notice(id: 5, kind: 'reminder', title: 'Rappel', text: 'En retard', createdAt: DateTime(2026, 11, 20), seenBy: 1, audience: 2)],
+    payments: [AdminPayment(amount: 30000, method: 'wave', paidOn: DateTime(2026, 10, 6), reference: 'WV1')],
+  );
+  final adminCalls = <String>[];
+  AppError? adminError;
+  @override
+  Future<List<AdminSchool>> adminSchools() async => adminList;
+  @override
+  Future<AdminSchoolDetail> adminSchool(int id) async => adminDetail;
+  @override
+  Future<void> adminSetSubscription(int schoolId, {required int monthlyAmount, required int billingDay, required DateTime startedOn, int graceDays = 5}) async => adminCalls.add('subscription $monthlyAmount/$billingDay');
+  bool stepUpOnce = false; // the first sensitive call is refused until the password is re-typed
+  @override
+  Future<void> adminRecordPayment(int schoolId, {required int amount, required String method, String? reference, DateTime? paidOn}) async {
+    if (stepUpOnce) {
+      stepUpOnce = false;
+      throw AppError('step_up_required', status: 403);
+    }
+    adminCalls.add('payment $amount $method');
+  }
+  @override
+  Future<void> adminSendNotice(int schoolId, String kind, {DateTime? blockOn, String? title, String? text}) async {
+    if (adminError != null) throw adminError!;
+    adminCalls.add('notice $kind${blockOn == null ? '' : ' ${blockOn.toIso8601String().substring(0, 10)}'}');
+  }
+  @override
+  Future<void> adminBlock(int schoolId, String reason) async {
+    if (adminError != null) throw adminError!;
+    adminCalls.add('block $reason');
+  }
+  @override
+  Future<void> adminUnblock(int schoolId) async {
+    if (stepUpOnce) {
+      stepUpOnce = false;
+      throw AppError('step_up_required', status: 403);
+    }
+    adminCalls.add('unblock');
+  }
 
   final reminderItems = <ReminderItem>[];
   final sentReminders = <int>[];
@@ -184,10 +312,10 @@ class FakeRepo implements SchoolRepo {
   /// What a teacher may give in the class (null = everything).
   Set<int>? mySubjectIds;
   List<Classroom> rooms = const [Classroom(id: 1, name: '6e 1', level: '6e')];
-  ClassTeachers teachers = const ClassTeachers(headTeacherId: null, assignments: [(staffId: 3, name: 'Prof Math', subjectId: 1)]);
+  ClassTeachers classTeachersData = const ClassTeachers(headTeacherId: null, assignments: [(staffId: 3, name: 'Prof Math', subjectId: 1)]);
   ({int? head, List<({int staffId, int? subjectId})> list})? savedTeachers;
   @override
-  Future<ClassTeachers> classTeachers(int classroomId) async => teachers;
+  Future<ClassTeachers> classTeachers(int classroomId) async => classTeachersData;
   @override
   Future<void> saveClassTeachers(int classroomId, {int? headTeacherId, required List<({int staffId, int? subjectId})> assignments}) async => savedTeachers = (head: headTeacherId, list: assignments);
   @override
@@ -268,3 +396,8 @@ Widget harness(Widget child, {required Me? me, FakeRepo? repo, FakeSession? sess
         ),
       ),
     );
+
+/// Overrides for tests that build their own ProviderScope.
+Override sessionProvider2(FakeSession s) => sessionProvider.overrideWith(() => s);
+Override repoOverride(SchoolRepo r) => repoProvider.overrideWithValue(r);
+Widget harnessChild(Widget child) => Theme(data: buildTheme(), child: child);

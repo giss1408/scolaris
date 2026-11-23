@@ -1,7 +1,9 @@
 """Set-up of the school: years, classrooms, fee schedule, staff."""
 
 
-from fastapi import APIRouter, Depends
+import hashlib
+
+from fastapi import APIRouter, Depends, Request, Response
 from regisse_kit.phone import InvalidPhone, normalize_ci_phone
 from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
@@ -14,9 +16,46 @@ from app.errors import BadRequest, Conflict, NotFound
 from app.levels import FEE_KINDS, LEVELS, PAYMENT_METHODS
 from app.models import AcademicYear, AuditLog, Classroom, FeeInstallment, School, StaffMember, TimetableSlot
 from app.schemas import ClassroomIn, FeeScheduleIn, StaffIn, YearIn
-from app.services import academics, auth_client
+from app.services import academics, auth_client, images
 
 router = APIRouter(prefix="/v1", tags=["school"])
+
+
+@router.put("/school/logo")
+async def put_logo(request: Request, m: Me = Depends(current_me), db: AsyncSession = Depends(get_session)) -> dict:
+    """The director sets the school's logo: the raw image as the request body (PNG or JPEG, at most 512 KB). It shows in the app and on the documents."""
+    m.require_role("director")
+    data = await request.body()
+    if not data:
+        raise BadRequest("empty_image", "Aucune image reçue.")
+    if len(data) > images.MAX_BYTES:
+        raise BadRequest("image_too_large", "L'image dépasse 512 Ko : choisissez un fichier plus léger.")
+    found = images.sniff(data)  # by content: a renamed file or a wrong declared type does not pass
+    if found is None:
+        raise BadRequest("image_format", "Format non accepté : utilisez une image PNG ou JPEG.")
+    ctype, w, h = found
+    if not (images.MIN_SIDE <= w <= images.MAX_SIDE and images.MIN_SIDE <= h <= images.MAX_SIDE):
+        raise BadRequest("image_size", f"L'image doit mesurer entre {images.MIN_SIDE} et {images.MAX_SIDE} pixels de côté.")
+    school = await db.get(School, m.school_id)
+    school.logo, school.logo_type = data, ctype
+    db.add(AuditLog(school_id=m.school_id, actor_id=m.staff.id, action="school.logo.set", entity="school", entity_id=school.id, detail={"bytes": len(data)}))
+    await db.commit()
+    return {"has_logo": True, "logo_version": logo_version(school)}
+
+
+@router.delete("/school/logo")
+async def delete_logo(m: Me = Depends(current_me), db: AsyncSession = Depends(get_session)) -> dict:
+    m.require_role("director")
+    school = await db.get(School, m.school_id)
+    school.logo = school.logo_type = None
+    db.add(AuditLog(school_id=m.school_id, actor_id=m.staff.id, action="school.logo.removed", entity="school", entity_id=school.id))
+    await db.commit()
+    return {"has_logo": False}
+
+
+@router.get("/school/logo")
+async def get_logo(request: Request, m: Me = Depends(current_me), db: AsyncSession = Depends(get_session)) -> Response:
+    return logo_response(request, await db.get(School, m.school_id))
 
 
 @router.get("/me")
@@ -25,10 +64,33 @@ async def me(m: Me = Depends(current_me), db: AsyncSession = Depends(get_session
     year = await db.scalar(select(AcademicYear).where(AcademicYear.school_id == m.school_id, AcademicYear.is_current))
     return {
         "staff": {"id": m.staff.id, "name": m.staff.display_name, "role": m.role},
-        "school": {"id": school.id, "name": school.name, "kind": school.kind, "city": school.city},
+        "billing_banner": await _banner(db, school, m.staff.id) if m.role in ("director", "secretary") else None,
+        "school": {"id": school.id, "name": school.name, "kind": school.kind, "city": school.city, "has_logo": school.logo is not None, "logo_version": logo_version(school),
+                   "auto_whatsapp": school.auto_whatsapp, "phone": school.phone},
         "current_year": {"id": year.id, "label": year.label} if year else None,
         "catalog": {"levels": LEVELS, "fee_kinds": FEE_KINDS, "methods": PAYMENT_METHODS},
     }
+
+
+async def _banner(db: AsyncSession, school: School, staff_id: int):
+    from app.routers.billing import banner
+
+    return await banner(db, school, staff_id)
+
+
+def logo_version(school: School) -> str | None:
+    return hashlib.sha256(school.logo).hexdigest()[:16] if school.logo else None
+
+
+def logo_response(request: Request, school: School) -> Response:
+    """The image with a cache validator: the app asks again with If-None-Match and gets a 304 until the logo changes."""
+    if not school.logo:
+        raise NotFound("no_logo")
+    etag = f'"{logo_version(school)}"'
+    headers = {"ETag": etag, "Cache-Control": "private, max-age=3600", "X-Content-Type-Options": "nosniff"}
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers=headers)
+    return Response(content=school.logo, media_type=school.logo_type, headers=headers)
 
 
 def _year(y: AcademicYear) -> dict:
@@ -124,6 +186,14 @@ async def staff(m: Me = Depends(current_me), db: AsyncSession = Depends(get_sess
     m.require_role("director")
     rows = await db.scalars(select(StaffMember).where(StaffMember.school_id == m.school_id).order_by(StaffMember.id))
     return [{"id": s.id, "name": s.display_name, "role": s.role, "active": s.active} for s in rows]
+
+
+@router.get("/teachers")
+async def teachers(m: Me = Depends(current_me), db: AsyncSession = Depends(get_session)) -> list[dict]:
+    """The active teachers of the school (names only): the direction and the secretary pick a replacement among them."""
+    m.require_role("director", "secretary")
+    rows = await db.scalars(select(StaffMember).where(StaffMember.school_id == m.school_id, StaffMember.role == "teacher", StaffMember.active).order_by(StaffMember.display_name))
+    return [{"id": t.id, "name": t.display_name} for t in rows]
 
 
 @router.post("/staff", status_code=201)

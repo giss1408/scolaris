@@ -3,14 +3,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/config.dart';
+import '../../core/sensitive.dart';
 import '../../core/models.dart';
 import '../../core/money.dart';
 import '../../core/providers.dart';
 import '../../core/repo.dart';
+import '../../core/school_logo.dart';
 import '../../core/session.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
 import '../../core/ui.dart';
+import 'report_sheet.dart';
 
 /// The parent space: her children (in any school that has her number), balance, report cards, receipts, absences. Read-only.
 class ParentShell extends ConsumerStatefulWidget {
@@ -75,6 +78,27 @@ class _ChildCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     final late = c.overdue > 0;
+    if (c.blocked) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(Space.md),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SchoolLogo(name: c.school, version: c.logoVersion, parentSchoolId: c.schoolId, size: 48),
+            const SizedBox(width: Space.md),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(c.name, style: t.titleMedium),
+                Text('${c.classroom} · ${c.school}', style: t.bodySmall),
+                const SizedBox(height: Space.sm),
+                const StatusBadge(S.serviceSuspended, tone: Tone.warning, icon: Icons.pause_circle_outline),
+                const SizedBox(height: Space.xs),
+                Text(S.contactSchool, style: t.bodySmall),
+              ]),
+            ),
+          ]),
+        ),
+      );
+    }
     return Card(
       child: InkWell(
         borderRadius: BorderRadius.circular(Radii.md),
@@ -83,7 +107,7 @@ class _ChildCard extends StatelessWidget {
           padding: const EdgeInsets.all(Space.md),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              Avatar(c.name, size: 48),
+              c.hasLogo ? SchoolLogo(name: c.school, version: c.logoVersion, parentSchoolId: c.schoolId, size: 48) : Avatar(c.name, size: 48),
               const SizedBox(width: Space.md),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(c.name, style: t.titleMedium), Text('${c.classroom} · ${c.school}', style: t.bodySmall)])),
               const Icon(Icons.chevron_right),
@@ -150,7 +174,16 @@ class _ChildPageState extends ConsumerState<ChildPage> {
           : _payments == null
               ? const SkeletonList(rows: 3)
               : ListView(padding: const EdgeInsets.all(Space.md), children: [
+                  FilledButton.icon(
+                    onPressed: () async {
+                      if (await showReportSheet(context, enrollmentId: widget.enrollmentId, childName: widget.name) && context.mounted) showMessage(context, S.reportSent);
+                    },
+                    icon: const Icon(Icons.edit_calendar_outlined),
+                    label: const Text(S.reportAbsence),
+                  ),
+                  const SizedBox(height: Space.sm),
                   OutlinedButton.icon(onPressed: () => context.push('/parent/child/${widget.enrollmentId}/timetable?name=${Uri.encodeComponent(widget.name)}'), icon: const Icon(Icons.calendar_view_week_outlined), label: const Text(S.timetable)),
+                  _Reports(enrollmentId: widget.enrollmentId),
                   const SectionHeader(S.reportCard),
                   Wrap(spacing: Space.sm, runSpacing: Space.sm, children: [for (final p in const [1, 2, 3, 0]) ChoiceChip(label: Text(S.periodLabel(p)), selected: _period == p, onSelected: (_) => setState(() => _period = p))]),
                   const SizedBox(height: Space.sm),
@@ -176,7 +209,7 @@ class _ChildPageState extends ConsumerState<ChildPage> {
                       child: RowCard(
                         leading: Icon(a.kind == 'retard' ? Icons.schedule_outlined : Icons.event_busy_outlined),
                         title: '${a.kind == 'retard' ? 'Retard' : 'Absence'} · ${formatDate(a.day)}',
-                        subtitle: a.reason,
+                        subtitle: a.course != null ? '${S.atCourse} : ${a.course!.subject} (${a.course!.start}-${a.course!.end})' : a.reason,
                         trailing: StatusBadge(a.justified ? 'Justifiée' : 'Non justifiée', tone: a.justified ? Tone.success : Tone.warning, icon: a.justified ? Icons.check : Icons.warning_amber),
                       ),
                     ),
@@ -184,6 +217,45 @@ class _ChildPageState extends ConsumerState<ChildPage> {
                   Text('Les montants et les notes sont ceux enregistrés par l\'école.', style: t.bodySmall),
                 ]),
     );
+  }
+}
+
+/// The absences the parent has reported (recent and coming), each can be withdrawn.
+class _Reports extends ConsumerWidget {
+  const _Reports({required this.enrollmentId});
+  final int enrollmentId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final id = enrollmentId;
+    final list = ref.watch(childReportsProvider(id)).valueOrNull ?? const <AbsenceReport>[];
+    if (list.isEmpty) return const SizedBox.shrink();
+    final today = DateTime.now();
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const SectionHeader(S.reportedAbsences),
+      for (final r in list)
+        Padding(
+          padding: const EdgeInsets.only(bottom: Space.sm),
+          child: RowCard(
+            leading: const Icon(Icons.edit_calendar_outlined, color: Palette.accent),
+            title: '${S.dayLong(r.day.weekday)} ${formatDate(r.day)}',
+            subtitle: [S.reportReason(r.reason), if (r.note != null) r.note!].join(' · '),
+            trailing: !r.day.isBefore(DateTime(today.year, today.month, today.day))
+                ? TextButton(
+                    onPressed: () async {
+                      try {
+                        await ref.read(repoProvider).withdrawAbsenceReport(id, r.day);
+                        ref.invalidate(childReportsProvider(id));
+                      } catch (e) {
+                        if (context.mounted) reportError(context, e);
+                      }
+                    },
+                    child: const Text(S.withdraw),
+                  )
+                : null,
+          ),
+        ),
+    ]);
   }
 }
 

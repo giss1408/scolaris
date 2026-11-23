@@ -137,7 +137,9 @@ async def report_card(db: AsyncSession, school_id: int, enrollment_id: int, peri
     student = await db.get(Student, enr.student_id)
     school = await db.get(School, school_id)
     remark = await db.scalar(select(PeriodRemark).where(PeriodRemark.enrollment_id == enr.id, PeriodRemark.period == (period or 3)))
-    absences = (await db.scalars(select(Absence).where(Absence.school_id == school_id, Absence.enrollment_id == enr.id))).all()
+    all_abs = (await db.scalars(select(Absence).where(Absence.school_id == school_id, Absence.enrollment_id == enr.id))).all()
+    absences = [a for a in all_abs if a.slot_id is None]  # days; the periods missed during a course are counted apart
+    courses_missed = sum(1 for a in all_abs if a.slot_id is not None and a.kind == "absence")
     return {
         "school": {"name": school.name, "city": school.city}, "classroom": res["classroom"], "period": period,
         "student": {"id": student.id, "name": f"{student.last_name} {student.first_names}", "internal_number": student.internal_number, "matricule": student.matricule_mena},
@@ -149,5 +151,6 @@ async def report_card(db: AsyncSession, school_id: int, enrollment_id: int, peri
         "absences": {
             "days_unjustified": sum(1 for a in absences if a.kind == "absence" and not a.justified), "days_justified": sum(1 for a in absences if a.kind == "absence" and a.justified),
             "late": sum(1 for a in absences if a.kind == "retard"),
+            "courses_missed": courses_missed,
         },
     }
