@@ -69,7 +69,7 @@ def compose(step: str, *, parent: str, school: str, lines: list[FamilyLine], pho
         kids.setdefault(fl.student_name, fl.classroom)
     who = " et ".join(f"{n} ({c})" for n, c in kids.items())
     tranche = target[0].line.label
-    call = f" ou appelez le {phone}" if phone else ""
+    reach = f"Écrivez-nous sur WhatsApp ou appelez le {phone}" if phone else "Contactez l'économat de l'école"  # replies go to the SCHOOL's number, never to a number nobody reads
     if step == "before":
         text = (f"Bonjour {parent}, l'école {school} vous rappelle que la {tranche} de {who}, d'un montant de {money(amount)}, "
                 f"est attendue au plus tard le {target[0].line.due_date.strftime('%d/%m/%Y')}. Vous pouvez payer au guichet de l'école, par Wave ou Mobile Money. Merci de votre confiance.")
@@ -78,10 +78,10 @@ def compose(step: str, *, parent: str, school: str, lines: list[FamilyLine], pho
                 f"Vous pouvez payer au guichet de l'école, par Wave ou Mobile Money. Si vous avez déjà payé, merci de ne pas tenir compte de ce message.")
     elif step == "late_10":
         text = (f"Bonjour {parent}, il reste {money(amount)} à régler pour {who}. Si vous rencontrez une difficulté, l'économat de {school} peut vous proposer "
-                f"un échéancier. Répondez à ce message{call}.")
+                f"un échéancier. {reach}.")
     elif step == "late_20":
         text = (f"Bonjour {parent}, nous aimerions vous rencontrer à l'économat de {school} au sujet de la scolarité de {who} ({money(amount)} restants). "
-                f"Quand pouvez-vous passer cette semaine ? Répondez à ce message{call}.")
+                f"Quand pouvez-vous passer cette semaine ? {reach}.")
     else:  # escalate: for the direction, not for the parent
         text = f"Famille {parent} : {money(amount)} en retard pour {who}, relancée sans paiement. La direction décide de la suite."
     return text, amount
@@ -160,7 +160,7 @@ async def plan(db: AsyncSession, school_id: int, year_id: int, now: datetime) ->
         contact, channel = pick_contact(contacts_by.get(fid, []))
         if step == "escalate":
             channel = "direction"
-        text, amount = compose(step, parent=(contact.name if contact else families[fid].name), school=school.name, lines=lines, phone=school.phone)
+        text, amount = compose(step, parent=(contact.name if contact else families[fid].name), school=school.name, lines=lines, phone=school.whatsapp_phone or school.phone)
         res = await db.execute(pg_insert(Reminder).values(school_id=school_id, family_id=fid, step=step, anchor=anchor, channel=channel, amount=amount, text=text, planned_on=today)
                                .on_conflict_do_nothing(index_elements=["family_id", "step", "anchor"]))
         stats["planned"] += res.rowcount or 0

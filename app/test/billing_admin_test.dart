@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:scolaris/core/errors.dart';
 import 'package:scolaris/core/models.dart';
@@ -11,6 +12,7 @@ import 'package:scolaris/features/home/shell_page.dart';
 import 'helpers.dart';
 
 void main() {
+  paymentTests();
   void phone(WidgetTester t, {double h = 2600, double w = 390}) => t.view
     ..physicalSize = Size(w, h)
     ..devicePixelRatio = 1.0;
@@ -274,6 +276,143 @@ void main() {
       await t.pumpAndSettle();
       final ex = t.takeException();
       if (ex != null) problems.add('${page.runtimeType}: ${ex.toString().split('\n').first}');
+    }
+    expect(problems, isEmpty);
+  });
+}
+
+void paymentTests() {
+  void phone(WidgetTester t, {double h = 3000, double w = 390}) => t.view
+    ..physicalSize = Size(w, h)
+    ..devicePixelRatio = 1.0;
+
+  testWidgets('a school sees where to pay: the amount, each number with the name the operator shows, and the reference to quote', (t) async {
+    phone(t);
+    await t.pumpWidget(harness(const BillingPage(), me: meWith('secretary')));
+    await t.pumpAndSettle();
+    expect(find.text('Comment payer'), findsOneWidget);
+    expect(find.text('Montant à payer : 100 000 FCFA'), findsOneWidget);
+    expect(find.text('+2250701020304'), findsOneWidget);
+    expect(find.text('+2250505050505'), findsOneWidget);
+    expect(find.text('Wave'), findsOneWidget);
+    expect(find.text('Orange Money'), findsOneWidget);
+    expect(find.text("Le nom affiché par l'opérateur doit être : Scolaris SARL"), findsNWidgets(2));
+    expect(find.text('Référence à indiquer : SCO-12'), findsOneWidget);
+    expect(find.text('Envoyez la capture au 07…'), findsOneWidget);
+  });
+
+  testWidgets('the number can be copied', (t) async {
+    phone(t);
+    final copied = <String>[];
+    t.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.setData') copied.add((call.arguments as Map)['text'] as String);
+      return null;
+    });
+    addTearDown(() => t.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
+    await t.pumpWidget(harness(const BillingPage(), me: meWith('director')));
+    await t.pumpAndSettle();
+    await t.tap(find.byTooltip('Copier le numéro').first);
+    await t.pumpAndSettle();
+    expect(copied, ['+2250701020304']);
+    expect(find.text('Numéro copié.'), findsOneWidget);
+  });
+
+  testWidgets('a blocked school sees where to pay on its suspension screen', (t) async {
+    phone(t);
+    await t.pumpWidget(harness(const BlockedPage(), me: const Me(staffId: 1, name: 'Awa Koné', role: 'director', schoolName: 'Ecole A', banner: BillingBanner(level: 'blocked', title: 'Accès suspendu', text: 'x'))));
+    await t.pumpAndSettle();
+    expect(find.text('Comment payer'), findsOneWidget);
+    expect(find.text('+2250701020304'), findsOneWidget);
+  });
+
+  testWidgets('no number communicated yet: the school is told to contact the team', (t) async {
+    phone(t);
+    final repo = FakeRepo()..billingInfo = BillingInfo(status: 'active', payTo: const PayTo(methods: [], reference: 'SCO-12'), standing: FakeRepo().billingInfo.standing);
+    await t.pumpWidget(harness(const BillingPage(), me: meWith('director'), repo: repo));
+    await t.pumpAndSettle();
+    expect(find.text("Le numéro de paiement n'est pas encore communiqué. Contactez l'équipe Scolaris."), findsOneWidget);
+    expect(find.text('Référence à indiquer : SCO-12'), findsOneWidget);
+  });
+
+  testWidgets('the team edits the payment numbers and the default price; saving needs the password AND the code again', (t) async {
+    phone(t);
+    final session = FakeSession(null, admin: true);
+    final repo = FakeRepo()..stepUpOnce = true;
+    await t.pumpWidget(harness(const PaymentInfoPage(), me: null, session: session, repo: repo));
+    await t.pumpAndSettle();
+    expect(find.text('Wave · +2250701020304'), findsOneWidget);
+    expect(find.text('Enregistrer'), findsNothing); // nothing changed yet
+    await t.tap(find.text('Ajouter un numéro'));
+    await t.pumpAndSettle();
+    await t.tap(find.widgetWithText(FilledButton, 'Ajouter un numéro')); // empty: refused
+    await t.pumpAndSettle();
+    expect(find.text('Entrez les 10 chiffres du numéro et le nom du titulaire.'), findsOneWidget);
+    await t.tap(find.widgetWithText(ChoiceChip, 'MTN MoMo'));
+    await t.enterText(find.widgetWithText(TextField, 'Numéro de téléphone'), '01 02 03 04 05');
+    await t.enterText(find.widgetWithText(TextField, 'Nom du titulaire'), 'Scolaris SARL');
+    await t.tap(find.widgetWithText(FilledButton, 'Ajouter un numéro'));
+    await t.pumpAndSettle();
+    await t.enterText(find.widgetWithText(TextField, 'Prix mensuel par défaut (FCFA)'), '35000');
+    await t.pump();
+    await t.tap(find.text('Enregistrer'));
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 400));
+    await t.enterText(find.widgetWithText(TextField, 'Mot de passe'), 'MonMotDePasse2026');
+    await t.enterText(find.widgetWithText(TextField, "Code d'authentification"), '246810');
+    await t.tap(find.widgetWithText(TextButton, 'Confirmer'));
+    await t.pumpAndSettle();
+    expect(session.stepUps.single, (password: 'MonMotDePasse2026', totp: '246810'));
+    final saved = repo.savedPaymentInfo.single;
+    expect(saved.methods, ['wave:+2250701020304', 'mtn_momo:01 02 03 04 05']);
+    expect(saved.price, 35000);
+    expect(saved.note, 'Indiquez la référence');
+  });
+
+  testWidgets('a number can be removed from the list', (t) async {
+    phone(t);
+    final repo = FakeRepo();
+    await t.pumpWidget(harness(const PaymentInfoPage(), me: null, session: FakeSession(null, admin: true), repo: repo));
+    await t.pumpAndSettle();
+    await t.tap(find.byTooltip('Retirer'));
+    await t.pumpAndSettle();
+    expect(find.text('Wave · +2250701020304'), findsNothing);
+    await t.tap(find.text('Enregistrer'));
+    await t.pumpAndSettle();
+    expect(repo.savedPaymentInfo.single.methods, isEmpty);
+  });
+
+  testWidgets('a school subscription may leave the price empty: the default price is used; without a default it is required', (t) async {
+    phone(t);
+    final repo = FakeRepo();
+    await t.pumpWidget(harness(const AdminSchoolPage(schoolId: 2), me: null, session: FakeSession(null, admin: true), repo: repo));
+    await t.pumpAndSettle();
+    await t.tap(find.text("Définir l'abonnement"));
+    await t.pumpAndSettle();
+    expect(find.textContaining('Vide : prix par défaut (30'), findsOneWidget); // the default price is shown in the field's hint
+    await t.enterText(find.widgetWithText(TextField, 'Mensualité (FCFA)'), ''); // the sheet starts with the school's current price: clear it
+    await t.tap(find.widgetWithText(FilledButton, 'Enregistrer'));
+    await t.pumpAndSettle();
+    expect(repo.adminCalls, ['subscription default/5']);
+    final none = FakeRepo()..paymentInfo = const PaymentInfo(methods: []);
+    await t.pumpWidget(harness(const AdminSchoolPage(schoolId: 2), me: null, session: FakeSession(null, admin: true), repo: none));
+    await t.pumpAndSettle();
+    await t.tap(find.text("Définir l'abonnement"));
+    await t.pumpAndSettle();
+    await t.enterText(find.widgetWithText(TextField, 'Mensualité (FCFA)'), '');
+    await t.tap(find.widgetWithText(FilledButton, 'Enregistrer'));
+    await t.pumpAndSettle();
+    expect(find.text('Indiquez un montant et un jour entre 1 et 28.'), findsOneWidget); // no default price and no price typed
+    expect(none.adminCalls, isEmpty);
+  });
+
+  testWidgets('no overflow at 320 px, text x2: payment info screens', (t) async {
+    phone(t, h: 3200, w: 320);
+    final problems = <String>[];
+    for (final (page, admin) in <(Widget, bool)>[(const BillingPage(), false), (const PaymentInfoPage(), true)]) {
+      await t.pumpWidget(harness(page, me: meWith('director'), session: admin ? FakeSession(null, admin: true) : null, textScale: 2.0));
+      await t.pumpAndSettle();
+      final e = t.takeException();
+      if (e != null) problems.add('${page.runtimeType}: ${e.toString().split('\n').first}');
     }
     expect(problems, isEmpty);
   });

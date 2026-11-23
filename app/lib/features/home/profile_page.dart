@@ -9,6 +9,7 @@ import '../../core/providers.dart';
 import '../../core/repo.dart';
 import '../../core/school_logo.dart';
 import '../setup/logo_sheet.dart';
+import '../setup/whatsapp_number_sheet.dart';
 import '../../core/session.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
@@ -44,6 +45,7 @@ class ProfilePage extends ConsumerWidget {
             SettingsRow(icon: Icons.request_quote_outlined, label: S.fees, onTap: () => context.push('/fees')),
             SettingsRow(icon: Icons.menu_book_outlined, label: S.subjectsTitle, onTap: () => context.push('/subjects')),
             SettingsRow(icon: Icons.group_outlined, label: S.team, onTap: () => context.push('/team')),
+            SettingsRow(icon: Icons.chat_outlined, label: S.schoolWhatsapp, value: me.whatsappPhone ?? S.noWhatsappNumber, onTap: () => showModalBottomSheet<void>(context: context, isScrollControlled: true, builder: (_) => const WhatsappNumberSheet())),
             SettingsRow(icon: Icons.image_outlined, label: S.schoolLogo, value: me.hasLogo ? 'Défini' : 'Aucun', onTap: () => showModalBottomSheet<void>(context: context, builder: (_) => const LogoSheet())),
           ]),
         if (me.isDirector)
@@ -68,7 +70,7 @@ class ProfilePage extends ConsumerWidget {
           ),
         if (me.role != 'teacher')
           SettingsGroup(title: 'Communication', children: [
-            SettingsRow(icon: Icons.mark_chat_read_outlined, label: S.messagesLog, onTap: () => context.push('/messages')),
+            SettingsRow(icon: Icons.mark_chat_read_outlined, label: S.messagesLog, value: me.messagesToSend > 0 ? S.toSendCount(me.messagesToSend) : null, onTap: () => context.push('/messages')),
             if (me.isDirector || me.role == 'secretary') SettingsRow(icon: Icons.workspace_premium_outlined, label: S.subscription, value: me.banner == null || me.banner!.level == 'info' ? null : me.banner!.title, onTap: () => context.push('/billing')),
           ]),
         if (me.isDirector)

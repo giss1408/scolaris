@@ -6,6 +6,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/models.dart';
 import '../../core/money.dart';
 import '../../core/providers.dart';
+import '../../core/repo.dart';
+import '../../core/sensitive.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
 import '../../core/ui.dart';
@@ -43,7 +45,7 @@ class StudentDetailPage extends ConsumerWidget {
             if (s.contacts.isEmpty)
               const Card(child: Padding(padding: EdgeInsets.all(Space.md), child: Text('Aucun contact enregistré.')))
             else
-              Column(children: [for (final c in s.contacts) Padding(padding: const EdgeInsets.only(bottom: Space.sm), child: _ContactCard(c))]),
+              Column(children: [for (final c in s.contacts) Padding(padding: const EdgeInsets.only(bottom: Space.sm), child: _ContactCard(c, onChanged: () => ref.invalidate(studentProvider(key))))]),
             if (s.siblings.isNotEmpty) ...[
               const SectionHeader('${S.family} (frères et sœurs)'),
               for (final sib in s.siblings) Padding(padding: const EdgeInsets.only(bottom: Space.sm), child: RowCard(leading: Avatar(sib.name), title: sib.name)),
@@ -94,12 +96,29 @@ class _QuickActions extends StatelessWidget {
       ]);
 }
 
-class _ContactCard extends StatelessWidget {
-  const _ContactCard(this.c);
+class _ContactCard extends ConsumerWidget {
+  const _ContactCard(this.c, {required this.onChanged});
   final Contact c;
+  final VoidCallback onChanged;
+
+  Future<void> _toggle(BuildContext context, WidgetRef ref) async {
+    if (c.optin && !await confirmDialog(context, title: S.withdrawOptin, message: S.withdrawOptinAsk, confirm: S.withdrawOptin, danger: true)) return;
+    try {
+      await ref.read(repoProvider).setContactOptin(c.id, !c.optin);
+      onChanged();
+      if (context.mounted) showMessage(context, c.optin ? S.optinWithdrawn : S.optinRestored);
+    } catch (e) {
+      if (context.mounted) reportError(context, e);
+    }
+  }
 
   @override
-  Widget build(BuildContext context) => RowCard(
+  Widget build(BuildContext context, WidgetRef ref) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        _card(context),
+        Align(alignment: Alignment.centerLeft, child: TextButton.icon(onPressed: () => _toggle(context, ref), icon: Icon(c.optin ? Icons.block_outlined : Icons.mark_chat_read_outlined), label: Text(c.optin ? S.withdrawOptin : S.restoreOptin))),
+      ]);
+
+  Widget _card(BuildContext context) => RowCard(
         leading: Avatar(c.name),
         title: c.name,
         subtitle: '${S.relationLabel(c.relation)} · ${c.phone}',

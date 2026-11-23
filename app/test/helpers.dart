@@ -9,7 +9,8 @@ import 'package:scolaris/core/repo.dart';
 import 'package:scolaris/core/session.dart';
 import 'package:scolaris/core/theme.dart';
 
-Me meWith(String role, {int id = 1}) => Me(
+Me meWith(String role, {int id = 1, String? whatsappPhone, int toSend = 0}) => Me(
+      whatsappPhone: whatsappPhone, messagesToSend: toSend,
       staffId: id, name: 'Awa Koné', role: role, schoolName: 'Groupe Scolaire Les Palmiers', city: 'Abidjan', yearId: 1, yearLabel: '2026-2027',
       levels: const {'college': ['6e', '5e']}, feeKinds: const ['scolarite', 'cantine'], methods: const ['especes', 'wave'],
     );
@@ -88,7 +89,7 @@ class FakeRepo implements SchoolRepo {
   @override
   Future<StudentDetail> student(int id, int enrollmentId, String classroom) async => StudentDetail(
         id: id, name: 'KOUASSI Aya', internalNumber: 'ELV-2026-000001', sex: 'F', assigned: false, matricule: '20123456A', birthDate: DateTime(2014, 3, 2), birthPlace: 'Abidjan',
-        contacts: const [Contact(name: 'Kouassi Paul', relation: 'pere', phone: '+2250701020304', masked: '07 •• •• 03 04', channel: 'whatsapp', optin: true, financial: true)],
+        contacts: const [Contact(id: 5, name: 'Kouassi Paul', relation: 'pere', phone: '+2250701020304', masked: '07 •• •• 03 04', channel: 'whatsapp', optin: true, financial: true)],
         siblings: const [(id: 3, name: 'KOUASSI Koffi')], enrollmentId: enrollmentId, classroom: classroom,
       );
 
@@ -245,7 +246,9 @@ class FakeRepo implements SchoolRepo {
     lastMessagesFilter = status;
     return status == null ? messageLog : MessageLog(summary: messageLog.summary, items: messageLog.items.where((m) => m.needsCall).toList());
   }
-  BillingInfo billingInfo = BillingInfo(status: 'active', standing: Standing(monthlyAmount: 50000, billingDay: 5, remaining: 100000, overdueMonths: 2, oldestLateDays: 49, late: true, nextDue: DateTime(2026, 12, 5)), notices: [
+  BillingInfo billingInfo = BillingInfo(
+      payTo: const PayTo(methods: [PayMethod(operator: 'wave', number: '+2250701020304', holder: 'Scolaris SARL'), PayMethod(operator: 'orange_money', number: '+2250505050505', holder: 'Scolaris SARL')], reference: 'SCO-12', note: 'Envoyez la capture au 07…', amount: 100000),
+      status: 'active', standing: Standing(monthlyAmount: 50000, billingDay: 5, remaining: 100000, overdueMonths: 2, oldestLateDays: 49, late: true, nextDue: DateTime(2026, 12, 5)), notices: [
     Notice(id: 7, kind: 'reminder', title: 'Rappel : mensualité Scolaris en retard', text: 'La mensualité est en retard.', createdAt: DateTime(2026, 11, 20)),
   ]);
   final seenNotices = <int>[];
@@ -270,7 +273,19 @@ class FakeRepo implements SchoolRepo {
   @override
   Future<AdminSchoolDetail> adminSchool(int id) async => adminDetail;
   @override
-  Future<void> adminSetSubscription(int schoolId, {required int monthlyAmount, required int billingDay, required DateTime startedOn, int graceDays = 5}) async => adminCalls.add('subscription $monthlyAmount/$billingDay');
+  Future<void> adminSetSubscription(int schoolId, {int? monthlyAmount, required int billingDay, required DateTime startedOn, int graceDays = 5}) async => adminCalls.add('subscription ${monthlyAmount ?? 'default'}/$billingDay');
+  PaymentInfo paymentInfo = const PaymentInfo(methods: [PayMethod(operator: 'wave', number: '+2250701020304', holder: 'Scolaris SARL')], defaultMonthlyAmount: 30000, note: 'Indiquez la référence');
+  final savedPaymentInfo = <({List<String> methods, int? price, String? note})>[];
+  @override
+  Future<PaymentInfo> adminPaymentInfo() async => paymentInfo;
+  @override
+  Future<void> adminSetPaymentInfo(List<PayMethod> methods, {int? defaultMonthlyAmount, String? note}) async {
+    if (stepUpOnce) {
+      stepUpOnce = false;
+      throw AppError('step_up_required', status: 403);
+    }
+    savedPaymentInfo.add((methods: [for (final m in methods) '${m.operator}:${m.number}'], price: defaultMonthlyAmount, note: note));
+  }
   bool stepUpOnce = false; // the first sensitive call is refused until the password is re-typed
   @override
   Future<void> adminRecordPayment(int schoolId, {required int amount, required String method, String? reference, DateTime? paidOn}) async {
@@ -298,6 +313,26 @@ class FakeRepo implements SchoolRepo {
     }
     adminCalls.add('unblock');
   }
+
+  // ---- manual WhatsApp: the app composes, the secretary forwards from the school's own number
+  ToSendList toSend = ToSendList(schoolPhone: '+2250705060708', canSendNow: true, items: [
+    ToSendItem(id: 1, family: 'KOUASSI', kind: 'absence', text: "Bonjour Kouassi Paul, message de l'école Ecole A : Fanta a été noté(e) absent(e). Merci de votre confiance.", createdAt: DateTime(2026, 11, 23), waLink: 'https://wa.me/2250701020304?text=x'),
+    ToSendItem(id: 2, family: 'BAMBA', kind: 'cancellation', text: 'Le cours de Maths est annulé.', createdAt: DateTime(2026, 11, 23), waLink: 'https://wa.me/2250505050505?text=y'),
+  ]);
+  final forwarded = <int>[];
+  final setAside = <int>[];
+  final whatsappNumbers = <String?>[];
+  final optins = <({int id, bool on})>[];
+  @override
+  Future<ToSendList> messagesToSend() async => toSend;
+  @override
+  Future<void> markMessageSent(int id) async => forwarded.add(id);
+  @override
+  Future<void> skipMessage(int id) async => setAside.add(id);
+  @override
+  Future<void> setWhatsappPhone(String? phone) async => whatsappNumbers.add(phone);
+  @override
+  Future<void> setContactOptin(int contactId, bool optin) async => optins.add((id: contactId, on: optin));
 
   final reminderItems = <ReminderItem>[];
   final sentReminders = <int>[];

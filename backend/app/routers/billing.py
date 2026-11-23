@@ -35,8 +35,14 @@ async def my_billing(m: Me = Depends(current_me), db: AsyncSession = Depends(get
     school = await db.get(School, m.school_id)
     notices = (await db.scalars(select(SchoolNotice).where(SchoolNotice.school_id == school.id).order_by(SchoolNotice.id.desc()).limit(30))).all()
     mine = set((await db.scalars(select(SchoolNoticeSeen.notice_id).where(SchoolNoticeSeen.staff_id == m.staff.id, SchoolNoticeSeen.notice_id.in_([n.id for n in notices] or [-1])))).all())
+    from app.routers.platform_admin import payment_info
+
+    info = await payment_info(db)
+    standing = await saas_billing.standing(db, school.id, clock.now().date())
     return {
-        "status": school.status, "standing": await saas_billing.standing(db, school.id, clock.now().date()),
+        # where and how to pay (works when the school is blocked too: that is when it matters most); the reference lets the team recognise the payment
+        "pay_to": {"methods": info["methods"], "note": info["note"], "reference": f"SCO-{school.id}", "amount": (standing["remaining"] if standing and standing["remaining"] > 0 else (standing or {}).get("monthly_amount"))},
+        "status": school.status, "standing": standing,
         "notices": [{"id": n.id, "kind": n.kind, "title": n.title, "text": n.text, "block_on": n.block_on.isoformat() if n.block_on else None, "created_at": n.created_at.isoformat(), "seen": n.id in mine} for n in notices],
     }
 

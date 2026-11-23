@@ -4,7 +4,7 @@ DateTime _d(Object? v) => DateTime.parse(v as String);
 
 @immutable
 class Me {
-  const Me({required this.staffId, required this.name, required this.role, required this.schoolName, this.city, this.yearId, this.yearLabel, this.levels = const {}, this.feeKinds = const [], this.methods = const [], this.hasLogo = false, this.logoVersion, this.autoWhatsapp = false, this.banner});
+  const Me({required this.staffId, required this.name, required this.role, required this.schoolName, this.city, this.yearId, this.yearLabel, this.levels = const {}, this.feeKinds = const [], this.methods = const [], this.hasLogo = false, this.logoVersion, this.autoWhatsapp = false, this.banner, this.whatsappPhone, this.messagesToSend = 0});
   final int staffId;
   final String name, role, schoolName;
   final String? city, yearLabel;
@@ -12,6 +12,12 @@ class Me {
   final Map<String, List<String>> levels;
   final List<String> feeKinds, methods;
   final bool hasLogo, autoWhatsapp;
+
+  /// The school's own WhatsApp number: messages are forwarded from it, parents' replies arrive on it.
+  final String? whatsappPhone;
+
+  /// Messages the app composed that a person still has to forward.
+  final int messagesToSend;
 
   /// Changes when the logo changes: the app fetches the image again only then.
   final String? logoVersion;
@@ -42,6 +48,8 @@ class Me {
       hasLogo: j['school']['has_logo'] == true,
       logoVersion: j['school']['logo_version'] as String?,
       autoWhatsapp: j['school']['auto_whatsapp'] == true,
+      whatsappPhone: j['school']['whatsapp_phone'] as String?,
+      messagesToSend: (j['school']['messages_to_send'] as int?) ?? 0,
       banner: j['billing_banner'] == null ? null : BillingBanner.fromJson(j['billing_banner'] as Map<String, dynamic>),
     );
   }
@@ -85,11 +93,12 @@ class StudentRow {
 
 @immutable
 class Contact {
-  const Contact({required this.name, required this.relation, required this.phone, required this.masked, required this.channel, required this.optin, required this.financial});
+  const Contact({this.id = 0, required this.name, required this.relation, required this.phone, required this.masked, required this.channel, required this.optin, required this.financial});
+  final int id;
   final String name, relation, phone, masked, channel;
   final bool optin, financial;
   factory Contact.fromJson(Map<String, dynamic> j) => Contact(
-        name: j['name'] as String, relation: j['relation'] as String, phone: j['phone'] as String, masked: j['phone_masked'] as String,
+        id: (j['id'] as int?) ?? 0, name: j['name'] as String, relation: j['relation'] as String, phone: j['phone'] as String, masked: j['phone_masked'] as String,
         channel: j['preferred_channel'] as String, optin: j['whatsapp_optin'] == true, financial: j['financial_responsible'] == true,
       );
 }
@@ -565,11 +574,15 @@ class Notice {
 
 @immutable
 class BillingInfo {
-  const BillingInfo({required this.status, this.standing, this.notices = const []});
+  const BillingInfo({required this.status, this.standing, this.notices = const [], this.payTo});
   final String status;
   final Standing? standing;
   final List<Notice> notices;
+
+  /// Where and how to pay the subscription (the numbers the Scolaris team entered).
+  final PayTo? payTo;
   factory BillingInfo.fromJson(Map<String, dynamic> j) => BillingInfo(
+        payTo: j['pay_to'] == null ? null : PayTo.fromJson(j['pay_to'] as Map<String, dynamic>),
         status: j['status'] as String, standing: j['standing'] == null ? null : Standing.fromJson(j['standing'] as Map<String, dynamic>),
         notices: [for (final n in j['notices'] as List) Notice.fromJson(n as Map<String, dynamic>)],
       );
@@ -620,4 +633,61 @@ class AdminSchoolDetail {
       payments: [for (final p in j['payments'] as List) AdminPayment(amount: p['amount'] as int, method: p['method'] as String, paidOn: DateTime.parse(p['paid_on'] as String), reference: p['reference'] as String?)],
     );
   }
+}
+
+/// A message the app composed: the secretary taps it, WhatsApp opens on the school's phone with the text ready, she sends it and marks it done.
+@immutable
+class ToSendItem {
+  const ToSendItem({required this.id, required this.family, required this.kind, required this.text, required this.createdAt, this.waLink});
+  final int id;
+  final String? family, waLink;
+  final String kind, text;
+  final DateTime createdAt;
+  factory ToSendItem.fromJson(Map<String, dynamic> j) => ToSendItem(
+        id: j['id'] as int, family: j['family'] as String?, kind: j['kind'] as String, text: j['text'] as String, createdAt: DateTime.parse(j['created_at'] as String).toLocal(), waLink: j['wa_link'] as String?,
+      );
+}
+
+@immutable
+class ToSendList {
+  const ToSendList({required this.items, required this.canSendNow, this.schoolPhone});
+  final List<ToSendItem> items;
+  final bool canSendNow;
+  final String? schoolPhone;
+  factory ToSendList.fromJson(Map<String, dynamic> j) => ToSendList(
+        schoolPhone: j['school_phone'] as String?, canSendNow: j['can_send_now'] == true, items: [for (final i in j['items'] as List) ToSendItem.fromJson(i as Map<String, dynamic>)],
+      );
+}
+
+/// A Mobile Money number of the Scolaris team. `holder` is the name the operator shows when money is sent, to check it goes to the right person.
+@immutable
+class PayMethod {
+  const PayMethod({required this.operator, required this.number, required this.holder});
+  final String operator, number, holder;
+  factory PayMethod.fromJson(Map<String, dynamic> j) => PayMethod(operator: j['operator'] as String, number: j['number'] as String, holder: j['holder'] as String);
+}
+
+/// What a school sees to pay: the numbers, the reference to quote, the amount to pay now.
+@immutable
+class PayTo {
+  const PayTo({required this.methods, required this.reference, this.note, this.amount});
+  final List<PayMethod> methods;
+  final String reference;
+  final String? note;
+  final int? amount;
+  factory PayTo.fromJson(Map<String, dynamic> j) => PayTo(
+        methods: [for (final m in j['methods'] as List) PayMethod.fromJson(m as Map<String, dynamic>)], reference: j['reference'] as String, note: j['note'] as String?, amount: j['amount'] as int?,
+      );
+}
+
+/// The team's settings: the numbers schools pay to, the usual monthly price, a note.
+@immutable
+class PaymentInfo {
+  const PaymentInfo({required this.methods, this.defaultMonthlyAmount, this.note});
+  final List<PayMethod> methods;
+  final int? defaultMonthlyAmount;
+  final String? note;
+  factory PaymentInfo.fromJson(Map<String, dynamic> j) => PaymentInfo(
+        methods: [for (final m in j['methods'] as List) PayMethod.fromJson(m as Map<String, dynamic>)], defaultMonthlyAmount: j['default_monthly_amount'] as int?, note: j['note'] as String?,
+      );
 }

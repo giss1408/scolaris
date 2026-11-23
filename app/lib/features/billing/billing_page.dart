@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/models.dart';
@@ -72,6 +73,7 @@ class BillingPage extends ConsumerWidget {
             const Card(child: Padding(padding: EdgeInsets.all(Space.md), child: Text("Aucun abonnement n'est défini pour votre établissement.")))
           else
             _StandingCard(b.standing!),
+          if (b.standing != null && b.payTo != null) ...[const SizedBox(height: Space.md), _PayToCard(b.payTo!)],
           const SectionHeader(S.noticesHistory),
           if (b.notices.isEmpty) const Text('Aucun avis pour le moment.'),
           for (final n in b.notices) Padding(padding: const EdgeInsets.only(bottom: Space.sm), child: _NoticeCard(n)),
@@ -107,6 +109,52 @@ class _StandingCard extends StatelessWidget {
           if (s.late) StatusBadge('${S.overdueMonths(s.overdueMonths)} · ${s.oldestLateDays} jours', tone: Tone.danger, icon: Icons.error_outline) else StatusBadge(s.remaining == 0 ? 'À jour' : 'Dans le délai', tone: Tone.success, icon: Icons.check_circle_outline),
           const SizedBox(height: Space.sm),
           Text('Prochaine échéance : ${formatDate(s.nextDue)}', style: t.bodySmall),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Where to send the money: the Mobile Money numbers of the Scolaris team, with the name the operator will show and the reference to quote.
+class _PayToCard extends StatelessWidget {
+  const _PayToCard(this.p);
+  final PayTo p;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(Space.md),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text(S.howToPay, style: t.titleSmall),
+          if (p.amount != null) Padding(padding: const EdgeInsets.only(top: Space.xs), child: Text('Montant à payer : ${formatFcfa(p.amount!)}', style: t.bodyMedium)),
+          const SizedBox(height: Space.sm),
+          if (p.methods.isEmpty) const Text(S.noPaymentNumber),
+          for (final m in p.methods)
+            Container(
+              margin: const EdgeInsets.only(bottom: Space.sm),
+              padding: const EdgeInsets.all(Space.md),
+              decoration: BoxDecoration(color: Palette.page, borderRadius: BorderRadius.circular(Radii.sm)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(S.methodLabel(m.operator), style: t.labelMedium),
+                const SizedBox(height: 2),
+                Row(children: [
+                  Expanded(child: Text(m.number, style: t.titleMedium)),
+                  IconButton(
+                    tooltip: S.copyNumber,
+                    icon: const Icon(Icons.copy_outlined),
+                    onPressed: () async {
+                      await Clipboard.setData(ClipboardData(text: m.number));
+                      if (context.mounted) showMessage(context, S.numberCopied);
+                    },
+                  ),
+                ]),
+                Text('${S.payHolderHelp} ${m.holder}', style: t.bodySmall),
+              ]),
+            ),
+          Text('${S.payReference} : ${p.reference}', style: t.titleSmall),
+          if (p.note != null) Padding(padding: const EdgeInsets.only(top: Space.xs), child: Text(p.note!, style: t.bodySmall)),
         ]),
       ),
     );

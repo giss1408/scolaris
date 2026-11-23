@@ -130,7 +130,7 @@ void main() {
   });
 
   testWidgets('profile: avatar initials, role badge, school group only for the director, sign-out asks first', (t) async {
-    phone(t);
+    phone(t, h: 4200); // the profile is long: build all of it
     final session = FakeSession(meWith('director'));
     await t.pumpWidget(harness(const ProfilePage(), me: null, session: session));
     await t.pumpAndSettle();

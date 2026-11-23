@@ -254,3 +254,81 @@ async def test_a_schools_staff_cannot_reach_another_schools_billing(client, scho
     assert b["notices"] == [] and b["standing"] is None
     assert (await client.post(f"/v1/billing/notices/1/seen", headers=other)).status_code == 404  # A's notice is not B's
     assert (await client.get("/v1/platform/schools", headers=other)).status_code == 403
+
+
+def methods_body(**kw):
+    return {"methods": [{"operator": "wave", "number": "07 01 02 03 04", "holder": "Scolaris SARL"}, {"operator": "orange_money", "number": "0505050505", "holder": "Scolaris SARL"}], "default_monthly_amount": 30000, "note": "Indiquez la référence", **kw}
+
+
+async def test_the_team_sets_where_schools_pay_and_every_school_sees_it(client, school, freeze):
+    r = await client.put("/v1/platform/payment-info", json=methods_body(), headers=admin())
+    assert r.status_code == 200
+    assert r.json() == {"methods": [{"operator": "wave", "number": "+2250701020304", "holder": "Scolaris SARL"}, {"operator": "orange_money", "number": "+2250505050505", "holder": "Scolaris SARL"}],
+                        "default_monthly_amount": 30000, "note": "Indiquez la référence"}
+    assert (await client.get("/v1/platform/payment-info", headers=admin())).json() == r.json()
+    await subscribe(client, school["id"])
+    for who in ("director", "secretary"):
+        pay_to = (await client.get("/v1/billing", headers=school[who])).json()["pay_to"]
+        assert pay_to["methods"][0] == {"operator": "wave", "number": "+2250701020304", "holder": "Scolaris SARL"} and pay_to["reference"] == f"SCO-{school['id']}", who
+        assert pay_to["amount"] == 100000 and pay_to["note"] == "Indiquez la référence"  # what is owed now (two months), to pay to those numbers
+    assert (await client.get("/v1/billing", headers=school["teacher"])).status_code == 403
+    # a school of another team sees the same numbers (platform-wide) but its own reference
+    sid2, _ = await make_school("Ecole B")
+    other, _ = await make_staff(sid2, "director", "Directrice B")
+    await subscribe(client, sid2, started="2026-11-20")
+    b = (await client.get("/v1/billing", headers=other)).json()["pay_to"]
+    assert b["methods"] == (await client.get("/v1/billing", headers=school["director"])).json()["pay_to"]["methods"] and b["reference"] == f"SCO-{sid2}" and b["amount"] == 50000
+
+
+async def test_a_blocked_school_still_sees_where_to_pay(client, school, freeze):
+    await client.put("/v1/platform/payment-info", json=methods_body(), headers=admin())
+    await _blocked(client, school, freeze)
+    pay_to = (await client.get("/v1/billing", headers=school["director"])).json()["pay_to"]
+    assert pay_to["methods"][0]["number"] == "+2250701020304" and pay_to["amount"] > 0
+
+
+async def test_changing_the_payment_numbers_is_protected_and_audited(client, school, freeze):
+    url = "/v1/platform/payment-info"
+    assert (await client.put(url, json=methods_body(), headers=school["director"])).json()["detail"] == "not_platform_admin"  # a school cannot redirect payments
+    assert (await client.put(url, json=methods_body(), headers=admin(amr=("pwd",)))).json()["detail"] == "totp_required"
+    assert (await client.put(url, json=methods_body(), headers=admin(auth_time=time.time() - 3600))).json()["detail"] == "step_up_required"
+    pytest.auth_calls["session_alive"] = False
+    assert (await client.put(url, json=methods_body(), headers=admin())).json()["detail"] == "session_ended"
+    pytest.auth_calls["session_alive"] = True
+    assert (await client.get(url, headers=admin())).json()["methods"] == []  # none of the refused attempts changed anything
+    await client.put(url, json=methods_body(), headers=admin())
+    await client.put(url, json={"methods": [{"operator": "mtn_momo", "number": "0102030405", "holder": "Nouveau titulaire"}], "default_monthly_amount": 40000}, headers=admin())
+    log = [a for a in (await client.get("/v1/platform/audit", headers=admin())).json() if a["action"] == "payment_info.set"]
+    last = log[0]["detail"]
+    assert len(log) == 2 and last["default_monthly_amount"] == 40000
+    assert last["before"] == [{"operator": "wave", "number": "+225 07 •• •• 04"}, {"operator": "orange_money", "number": "+225 05 •• •• 05"}]  # what it was, masked
+    assert last["after"] == [{"operator": "mtn_momo", "number": "+225 01 •• •• 05"}]
+    assert "0701020304" not in str(log)  # the audit never keeps a full number
+
+
+async def test_payment_numbers_are_validated(client, school, freeze):
+    url = "/v1/platform/payment-info"
+    put = lambda body: client.put(url, json=body, headers=admin())  # noqa: E731
+    assert (await put(methods_body(methods=[{"operator": "wave", "number": "12345", "holder": "Scolaris"}]))).json()["detail"] == "phone_invalid"
+    assert (await put(methods_body(methods=[{"operator": "bitcoin", "number": "0701020304", "holder": "Scolaris"}]))).status_code == 422
+    assert (await put(methods_body(methods=[{"operator": "wave", "number": "0701020304", "holder": "S"}]))).status_code == 422
+    dup = [{"operator": "wave", "number": "0701020304", "holder": "A B"}, {"operator": "wave", "number": "07 01 02 03 04", "holder": "A B"}]
+    assert (await put(methods_body(methods=dup))).json()["detail"] == "duplicate_method"
+    assert (await put(methods_body(methods=[{"operator": "wave", "number": "0701020304", "holder": "A B"}] * 7))).status_code == 422
+    assert (await put(methods_body(default_monthly_amount=0))).status_code == 422
+    assert (await put({"methods": []})).json() == {"methods": [], "default_monthly_amount": None, "note": None}  # all removed is allowed
+
+
+async def test_the_price_is_fixed_by_the_team_and_defaults_to_the_platforms_usual_price(client, school, freeze):
+    sid = school["id"]
+    r = await client.put(f"/v1/platform/schools/{sid}/subscription", json={"billing_day": 5, "started_on": "2026-09-14"}, headers=admin())
+    assert r.status_code == 400 and r.json()["detail"] == "no_price"  # nothing fixed yet: the team must say
+    await client.put("/v1/platform/payment-info", json=methods_body(default_monthly_amount=25000), headers=admin())
+    ok = await client.put(f"/v1/platform/schools/{sid}/subscription", json={"billing_day": 5, "started_on": "2026-09-14"}, headers=admin())
+    assert ok.status_code == 200 and ok.json()["monthly_amount"] == 25000 and ok.json()["billed"] == 50000
+    # a school with its own price keeps it, and changing the default later does not move existing subscriptions
+    sid2, _ = await make_school("Tarif spécial")
+    assert (await subscribe(client, sid2, amount=15000))["monthly_amount"] == 15000
+    await client.put("/v1/platform/payment-info", json=methods_body(default_monthly_amount=99000), headers=admin())
+    assert (await client.get(f"/v1/platform/schools/{sid}", headers=admin())).json()["subscription"]["monthly_amount"] == 25000
+    assert (await client.get("/v1/platform/payment-info", headers=admin())).json()["default_monthly_amount"] == 99000

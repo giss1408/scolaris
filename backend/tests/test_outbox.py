@@ -223,7 +223,7 @@ async def test_the_school_sees_the_log_and_who_must_be_phoned(client, school):
 
 async def test_only_the_director_switches_automatic_sending(client, school):
     assert (await client.put("/v1/school/settings", json={"auto_whatsapp": True}, headers=school["secretary"])).status_code == 403
-    assert (await client.put("/v1/school/settings", json={"auto_whatsapp": True}, headers=school["director"])).json() == {"auto_whatsapp": True}
+    assert (await client.put("/v1/school/settings", json={"auto_whatsapp": True}, headers=school["director"])).json() == {"auto_whatsapp": True, "whatsapp_phone": None}
 
 
 async def test_the_scheduler_sends_reminders_only_for_schools_that_opted_in_and_never_twice(client, school, monkeypatch):

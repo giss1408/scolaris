@@ -35,7 +35,9 @@ final childTimetableProvider = FutureProvider.autoDispose.family<Week, int>((ref
 final upcomingCancellationsProvider = FutureProvider.autoDispose<List<CancelledSession>>((ref) => ref.watch(repoProvider).upcomingCancellations());
 final teachersProvider = FutureProvider.autoDispose<List<TeacherRef>>((ref) => ref.watch(repoProvider).teachers());
 final messagesProvider = FutureProvider.autoDispose.family<MessageLog, String?>((ref, status) => ref.watch(repoProvider).messages(status: status));
+final toSendProvider = FutureProvider.autoDispose<ToSendList>((ref) => ref.watch(repoProvider).messagesToSend());
 final billingProvider = FutureProvider.autoDispose<BillingInfo>((ref) => ref.watch(repoProvider).billing());
+final paymentInfoProvider = FutureProvider.autoDispose<PaymentInfo>((ref) => ref.watch(repoProvider).adminPaymentInfo());
 final adminSchoolsProvider = FutureProvider.autoDispose<List<AdminSchool>>((ref) => ref.watch(repoProvider).adminSchools());
 final adminSchoolProvider = FutureProvider.autoDispose.family<AdminSchoolDetail, int>((ref, id) => ref.watch(repoProvider).adminSchool(id));
 final childReportsProvider = FutureProvider.autoDispose.family<List<AbsenceReport>, int>((ref, id) => ref.watch(repoProvider).childAbsenceReports(id));

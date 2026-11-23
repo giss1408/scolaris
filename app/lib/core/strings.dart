@@ -220,8 +220,26 @@ abstract final class S {
   static const removeLogo = 'Retirer le logo';
   static const logoHelp = "PNG ou JPEG, 512 Ko au maximum. Il s'affiche dans l'application, sur les reçus et sur les bulletins.";
   static const logoSaved = 'Logo enregistré.';
-  static const autoWhatsapp = 'Messages automatiques (WhatsApp)';
-  static const autoWhatsappHelp = "Prévient les familles qui l'ont accepté : absences, cours annulés, remplaçants, relances de scolarité. Entre 7 h et 20 h, jamais le dimanche.";
+  static const autoWhatsapp = 'Envoi automatique par Scolaris (avancé)';
+  static const autoWhatsappHelp = "Facultatif : Scolaris envoie lui-même les messages, depuis son numéro WhatsApp Business, sans que la secrétaire intervienne. Par défaut, c'est la secrétaire qui les transmet depuis le numéro de l'école.";
+  static const schoolWhatsapp = "Numéro WhatsApp de l'école";
+  static const schoolWhatsappHelp = "Les messages aux familles (absences, cours annulés, remplaçants, relances) sont rédigés par l'application ; la secrétaire les transmet depuis ce numéro, et les réponses des parents arrivent sur ce numéro, dans le WhatsApp de l'école.";
+  static const noWhatsappNumber = 'Aucun';
+  static const whatsappNumberSaved = 'Numéro enregistré.';
+  static const removeNumber = 'Retirer le numéro';
+  static const toSendTab = 'À envoyer';
+  static const historyTab = 'Historique';
+  static const sendFromSchool = "Envoyez depuis le numéro WhatsApp de l'école :";
+  static const repliesHere = 'Les réponses des parents arrivent sur ce numéro, dans votre WhatsApp.';
+  static const nothingToSend = 'Aucun message à envoyer.';
+  static const noNumberYet = "Aucun message n'est préparé tant que le directeur n'a pas enregistré le numéro WhatsApp de l'école (Profil).";
+  static const outsideSendHours = "Il est tard ou c'est dimanche : mieux vaut envoyer ce message demain matin (7 h - 20 h).";
+  static String toSendCount(int n) => n == 1 ? '1 à envoyer' : '$n à envoyer';
+  static const withdrawOptin = "Retirer l'accord WhatsApp";
+  static const restoreOptin = "Rétablir l'accord WhatsApp";
+  static const withdrawOptinAsk = "Plus aucun message WhatsApp ne sera préparé pour ce parent. Ceux qui attendent sont annulés.";
+  static const optinWithdrawn = 'Accord retiré : plus de messages pour ce parent.';
+  static const optinRestored = 'Accord rétabli.';
   static const messagesLog = 'Messages aux familles';
   static const messagesEmpty = 'Aucun message pour le moment.';
   static const toCall = 'À appeler';
@@ -234,6 +252,25 @@ abstract final class S {
   static const contactSchool = "Contactez l'école.";
   static String statusLabel(String s) => switch (s) { 'queued' => 'En attente', 'sent' => 'Envoyé', 'delivered' => 'Reçu', 'read' => 'Lu', 'failed' => 'Échec', 'skipped' => "Pas d'accord WhatsApp", _ => s };
   static String kindMsg(String k) => switch (k) { 'absence' => 'Absence', 'cancellation' => 'Cours annulé', 'substitute' => 'Remplaçant', 'reminder' => 'Relance', _ => 'Message' };
+
+  // How to pay the subscription
+  static const howToPay = 'Comment payer';
+  static const payTo = 'Envoyez le montant à ce numéro';
+  static const payReference = 'Référence à indiquer';
+  static const copyNumber = 'Copier le numéro';
+  static const numberCopied = 'Numéro copié.';
+  static const payHolderHelp = "Le nom affiché par l'opérateur doit être :";
+  static const noPaymentNumber = "Le numéro de paiement n'est pas encore communiqué. Contactez l'équipe Scolaris.";
+  static const paymentNumbers = 'Paiement des abonnements';
+  static const paymentNumbersHelp = "Les numéros Mobile Money où les écoles paient leur abonnement : tous les directeurs et secrétaires les voient. Le changement demande votre mot de passe et votre code d'authentification.";
+  static const defaultPrice = 'Prix mensuel par défaut (FCFA)';
+  static const defaultPriceHelp = "Proposé à la création d'un abonnement ; vous pouvez fixer un autre prix pour une école.";
+  static const paymentNote = 'Message pour les écoles (facultatif)';
+  static const addNumber = 'Ajouter un numéro';
+  static const holderName = 'Nom du titulaire';
+  static const operatorLabel = 'Opérateur';
+  static const paymentNumbersSaved = 'Numéros enregistrés.';
+  static const emptyMeansDefault = 'Vide : prix par défaut';
 
   // Scolaris team (platform admin)
   static const imTeam = 'Équipe Scolaris';

@@ -107,11 +107,18 @@ abstract class SchoolRepo {
   Future<void> deleteLogo();
   Future<void> setAutoWhatsapp(bool on);
   Future<MessageLog> messages({String? status});
+  Future<ToSendList> messagesToSend();
+  Future<void> markMessageSent(int id);
+  Future<void> skipMessage(int id);
+  Future<void> setWhatsappPhone(String? phone);
+  Future<void> setContactOptin(int contactId, bool optin);
   Future<BillingInfo> billing();
   Future<void> markNoticeSeen(int id);
   Future<List<AdminSchool>> adminSchools();
   Future<AdminSchoolDetail> adminSchool(int id);
-  Future<void> adminSetSubscription(int schoolId, {required int monthlyAmount, required int billingDay, required DateTime startedOn, int graceDays = 5});
+  Future<void> adminSetSubscription(int schoolId, {int? monthlyAmount, required int billingDay, required DateTime startedOn, int graceDays = 5});
+  Future<PaymentInfo> adminPaymentInfo();
+  Future<void> adminSetPaymentInfo(List<PayMethod> methods, {int? defaultMonthlyAmount, String? note});
   Future<void> adminRecordPayment(int schoolId, {required int amount, required String method, String? reference, DateTime? paidOn});
   Future<void> adminSendNotice(int schoolId, String kind, {DateTime? blockOn, String? title, String? text});
   Future<void> adminBlock(int schoolId, String reason);
@@ -450,6 +457,21 @@ class HttpRepo implements SchoolRepo {
   Future<MessageLog> messages({String? status}) async => MessageLog.fromJson(await _get<Map<String, dynamic>>('/v1/messages', q: {if (status != null) 'status': status}));
 
   @override
+  Future<ToSendList> messagesToSend() async => ToSendList.fromJson(await _get<Map<String, dynamic>>('/v1/messages/to-send'));
+
+  @override
+  Future<void> markMessageSent(int id) => _send<Object?>('POST', '/v1/messages/$id/sent');
+
+  @override
+  Future<void> skipMessage(int id) => _send<Object?>('POST', '/v1/messages/$id/skip');
+
+  @override
+  Future<void> setWhatsappPhone(String? phone) => _send<Object?>('PUT', '/v1/school/settings', body: {'whatsapp_phone': phone ?? ''});
+
+  @override
+  Future<void> setContactOptin(int contactId, bool optin) => _send<Object?>('PUT', '/v1/contacts/$contactId/optin', body: {'whatsapp_optin': optin});
+
+  @override
   Future<BillingInfo> billing() async => BillingInfo.fromJson(await _get<Map<String, dynamic>>('/v1/billing'));
 
   @override
@@ -462,8 +484,18 @@ class HttpRepo implements SchoolRepo {
   Future<AdminSchoolDetail> adminSchool(int id) async => AdminSchoolDetail.fromJson(await _get<Map<String, dynamic>>('/v1/platform/schools/$id'));
 
   @override
-  Future<void> adminSetSubscription(int schoolId, {required int monthlyAmount, required int billingDay, required DateTime startedOn, int graceDays = 5}) =>
-      _send<Object?>('PUT', '/v1/platform/schools/$schoolId/subscription', body: {'monthly_amount': monthlyAmount, 'billing_day': billingDay, 'started_on': isoDate(startedOn), 'grace_days': graceDays});
+  Future<void> adminSetSubscription(int schoolId, {int? monthlyAmount, required int billingDay, required DateTime startedOn, int graceDays = 5}) =>
+      _send<Object?>('PUT', '/v1/platform/schools/$schoolId/subscription', body: {if (monthlyAmount != null) 'monthly_amount': monthlyAmount, 'billing_day': billingDay, 'started_on': isoDate(startedOn), 'grace_days': graceDays});
+
+  @override
+  Future<PaymentInfo> adminPaymentInfo() async => PaymentInfo.fromJson(await _get<Map<String, dynamic>>('/v1/platform/payment-info'));
+
+  @override
+  Future<void> adminSetPaymentInfo(List<PayMethod> methods, {int? defaultMonthlyAmount, String? note}) => _send<Object?>('PUT', '/v1/platform/payment-info', body: {
+        'methods': [for (final m in methods) {'operator': m.operator, 'number': m.number, 'holder': m.holder}],
+        'default_monthly_amount': defaultMonthlyAmount,
+        if ((note ?? '').trim().isNotEmpty) 'note': note!.trim(),
+      });
 
   @override
   Future<void> adminRecordPayment(int schoolId, {required int amount, required String method, String? reference, DateTime? paidOn}) =>

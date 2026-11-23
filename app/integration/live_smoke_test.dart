@@ -177,6 +177,10 @@ void main() {
     expect(log.items, isA<List>());
     final bill = await repo.billing();
     expect(bill.status, 'active');
+    expect(bill.payTo!.methods.map((m) => m.operator), contains('wave')); // the numbers the team entered
+    expect(bill.payTo!.reference, startsWith('SCO-'));
+    await repo.setWhatsappPhone('07 05 06 07 08');
+    expect((await repo.messagesToSend()).schoolPhone, '+2250705060708');
     await repo.deleteLogo();
     expect(await repo.schoolLogo(), isNull);
 

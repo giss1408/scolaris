@@ -66,10 +66,19 @@ async def me(m: Me = Depends(current_me), db: AsyncSession = Depends(get_session
         "staff": {"id": m.staff.id, "name": m.staff.display_name, "role": m.role},
         "billing_banner": await _banner(db, school, m.staff.id) if m.role in ("director", "secretary") else None,
         "school": {"id": school.id, "name": school.name, "kind": school.kind, "city": school.city, "has_logo": school.logo is not None, "logo_version": logo_version(school),
-                   "auto_whatsapp": school.auto_whatsapp, "phone": school.phone},
+                   "auto_whatsapp": school.auto_whatsapp, "phone": school.phone, "whatsapp_phone": school.whatsapp_phone,
+                   "messages_to_send": await _to_send_count(db, school.id) if m.role in ("director", "secretary", "accountant") else 0},
         "current_year": {"id": year.id, "label": year.label} if year else None,
         "catalog": {"levels": LEVELS, "fee_kinds": FEE_KINDS, "methods": PAYMENT_METHODS},
     }
+
+
+async def _to_send_count(db: AsyncSession, school_id: int) -> int:
+    from sqlalchemy import func
+
+    from app.models import OutboundMessage
+
+    return int(await db.scalar(select(func.count()).select_from(OutboundMessage).where(OutboundMessage.school_id == school_id, OutboundMessage.status == "to_send")) or 0)
 
 
 async def _banner(db: AsyncSession, school: School, staff_id: int):

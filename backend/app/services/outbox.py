@@ -43,8 +43,9 @@ def next_window(now: datetime) -> datetime:
 async def enqueue(db: AsyncSession, *, school_id: int, family_id: int, kind: str, text: str, dedupe_key: str, now: datetime, contacts: list[Contact] | None = None) -> OutboundMessage | None:
     """Queue ONE message for a family (the responsible parent first). No opt-in: recorded as `skipped` so the staff know to phone. Returns None if already queued."""
     school = await db.get(School, school_id)
-    if not school.auto_whatsapp or school.status != "active":
-        return None  # the director has not switched automatic WhatsApp on (or the school is blocked): nothing is queued, nothing is sent
+    automatic = school.auto_whatsapp
+    if school.status != "active" or not (automatic or school.whatsapp_phone):
+        return None  # no number entered by the director and automatic sending off (or the school is blocked): nothing is composed, nothing is sent
     if contacts is None:
         contacts = list((await db.scalars(select(Contact).where(Contact.school_id == school_id, Contact.family_id == family_id))).all())
     contact, channel = pick_contact(contacts)
@@ -52,8 +53,10 @@ async def enqueue(db: AsyncSession, *, school_id: int, family_id: int, kind: str
     values = dict(school_id=school_id, family_id=family_id, contact_id=contact.id if contact else None, kind=kind, template=get_template(), params=params, preview=whatsapp.render(params), dedupe_key=dedupe_key)
     if contact is None or channel != "whatsapp":
         values.update(status="skipped", detail="no_whatsapp_optin" if contact else "no_contact")
-    else:
+    elif automatic:
         values.update(status="queued", to_phone_enc=contact.phone_enc, next_attempt_at=next_window(now))
+    else:  # the school's secretary forwards it from the school's own WhatsApp number
+        values.update(status="to_send", to_phone_enc=contact.phone_enc)
     res = await db.execute(pg_insert(OutboundMessage).values(**values).on_conflict_do_nothing(index_elements=["school_id", "dedupe_key"]).returning(OutboundMessage.id))
     new_id = res.scalar()
     if new_id is None:

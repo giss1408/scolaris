@@ -16,7 +16,7 @@ from app.db import get_session
 from app.deps import AdminMe, current_admin
 from app.errors import BadRequest, Conflict, NotFound
 from app.levels import PAYMENT_METHODS
-from app.models import PlatformAudit, School, SchoolNotice, SchoolNoticeSeen, StaffMember, Subscription, SubscriptionPayment
+from app.models import PlatformAudit, PlatformConfig, PlatformPaymentMethod, School, SchoolNotice, SchoolNoticeSeen, StaffMember, Subscription, SubscriptionPayment
 from app.services import saas_billing
 from app.services.reminders import money
 
@@ -26,7 +26,7 @@ MIN_REMINDERS = 1  # reminders (not counting the final notice) before a final no
 
 
 class SubscriptionIn(BaseModel):
-    monthly_amount: int = Field(gt=0, le=100_000_000)
+    monthly_amount: int | None = Field(default=None, gt=0, le=100_000_000)  # empty: the platform's default price
     billing_day: int = Field(ge=1, le=28)
     started_on: date
     grace_days: int = Field(default=5, ge=0, le=60)
@@ -102,6 +102,13 @@ async def school_detail(school_id: int, admin: AdminMe = Depends(current_admin),
 @router.put("/schools/{school_id}/subscription")
 async def set_subscription(school_id: int, data: SubscriptionIn, admin: AdminMe = Depends(current_admin), db: AsyncSession = Depends(get_session)) -> dict:
     s = await _school(db, school_id)
+    amount = data.monthly_amount
+    if amount is None:  # the price is the team's to fix: use the platform's usual price when none is given for this school
+        cfg = await db.get(PlatformConfig, 1)
+        amount = cfg.default_monthly_amount if cfg else None
+        if amount is None:
+            raise BadRequest("no_price", "Indiquez le prix mensuel, ou fixez d'abord le prix par défaut.")
+        data = data.model_copy(update={"monthly_amount": amount})
     sub = await db.get(Subscription, s.id)
     if sub is None:
         sub = Subscription(school_id=s.id, monthly_amount=data.monthly_amount, billing_day=data.billing_day, started_on=data.started_on, grace_days=data.grace_days, updated_by=admin.id)
@@ -209,3 +216,63 @@ async def audit(school_id: int | None = None, limit: int = 100, admin: AdminMe =
     if school_id is not None:
         q = q.where(PlatformAudit.school_id == school_id)
     return [{"admin": a.admin, "school_id": a.school_id, "action": a.action, "detail": a.detail, "at": a.at.isoformat()} for a in await db.scalars(q)]
+
+
+
+class MethodIn(BaseModel):
+    operator: str = Field(pattern="^(wave|orange_money|mtn_momo|moov_money)$")
+    number: str
+    holder: str = Field(min_length=2, max_length=80)
+
+
+class PaymentInfoIn(BaseModel):
+    methods: list[MethodIn] = Field(max_length=6)
+    default_monthly_amount: int | None = Field(default=None, gt=0, le=100_000_000)
+    note: str | None = Field(default=None, max_length=240)
+
+
+async def payment_info(db: AsyncSession) -> dict:
+    """What every school sees to pay (and what the team edits)."""
+    rows = (await db.scalars(select(PlatformPaymentMethod).order_by(PlatformPaymentMethod.id))).all()
+    cfg = await db.get(PlatformConfig, 1)
+    return {"methods": [{"operator": r.operator, "number": r.number, "holder": r.holder} for r in rows],
+            "default_monthly_amount": cfg.default_monthly_amount if cfg else None, "note": cfg.payment_note if cfg else None}
+
+
+@router.get("/payment-info")
+async def get_payment_info(admin: AdminMe = Depends(current_admin), db: AsyncSession = Depends(get_session)) -> dict:
+    return await payment_info(db)
+
+
+@router.put("/payment-info")
+async def set_payment_info(data: PaymentInfoIn, admin: AdminMe = Depends(current_admin), db: AsyncSession = Depends(get_session)) -> dict:
+    """The Mobile Money numbers schools pay to, and the usual price. Changing where money goes is the most sensitive thing the team can do: password re-proved,
+    a live session, every change audited with the numbers before and after."""
+    from regisse_kit.phone import InvalidPhone, mask_phone, normalize_ci_phone
+
+    from app.config import get_settings
+
+    await admin.require_recent_password()
+    clean: list[tuple[str, str, str]] = []
+    for m in data.methods:
+        try:
+            number = normalize_ci_phone(m.number, allow_test_numbers=get_settings().test_numbers)
+        except InvalidPhone as e:
+            raise BadRequest("phone_invalid", str(e)) from None
+        if (m.operator, number) in [(o, n) for o, n, _ in clean]:
+            raise BadRequest("duplicate_method", "Ce numéro est déjà dans la liste pour cet opérateur.")
+        clean.append((m.operator, number, m.holder.strip()))
+    before = await payment_info(db)
+    for r in (await db.scalars(select(PlatformPaymentMethod))).all():
+        await db.delete(r)
+    for op, number, holder in clean:
+        db.add(PlatformPaymentMethod(operator=op, number=number, holder=holder, created_by=admin.id))
+    cfg = await db.get(PlatformConfig, 1)
+    if cfg is None:
+        cfg = PlatformConfig(id=1)
+        db.add(cfg)
+    cfg.default_monthly_amount, cfg.payment_note, cfg.updated_by = data.default_monthly_amount, (data.note or "").strip() or None, admin.id
+    _audit(db, admin, None, "payment_info.set", before=[{"operator": m["operator"], "number": mask_phone(m["number"])} for m in before["methods"]],
+           after=[{"operator": o, "number": mask_phone(n)} for o, n, _ in clean], default_monthly_amount=data.default_monthly_amount)
+    await db.commit()
+    return await payment_info(db)

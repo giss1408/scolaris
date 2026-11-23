@@ -276,7 +276,7 @@ void main() {
     await t.pumpWidget(harness(const ProfilePage(), me: null, session: session, repo: repo));
     await t.pumpAndSettle();
     expect(find.text("Logo de l'école"), findsOneWidget);
-    expect(find.text('Messages automatiques (WhatsApp)'), findsOneWidget);
+    expect(find.text('Envoi automatique par Scolaris (avancé)'), findsOneWidget);
     await t.tap(find.byType(Switch));
     await t.pumpAndSettle();
     expect(repo.autoCalls, [true]);
@@ -285,7 +285,7 @@ void main() {
       await t.pumpWidget(harness(const ProfilePage(), me: meWith(role), repo: repo));
       await t.pumpAndSettle();
       expect(find.text("Logo de l'école"), findsNothing, reason: role);
-      expect(find.text('Messages automatiques (WhatsApp)'), findsNothing, reason: role);
+      expect(find.text('Envoi automatique par Scolaris (avancé)'), findsNothing, reason: role);
       expect(find.text('Messages aux familles'), findsOneWidget, reason: role);
     }
     await t.pumpWidget(harness(const ProfilePage(), me: meWith('teacher'), repo: repo));
@@ -297,6 +297,8 @@ void main() {
     phone(t);
     final repo = FakeRepo();
     await t.pumpWidget(harness(const MessagesPage(), me: meWith('secretary'), repo: repo));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Historique')); // the page opens on "À envoyer"
     await t.pumpAndSettle();
     expect(find.text('Envoyé : 1'), findsOneWidget);
     expect(find.text("Pas d'accord WhatsApp"), findsWidgets);

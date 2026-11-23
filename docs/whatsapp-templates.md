@@ -1,4 +1,8 @@
-# WhatsApp: the template to submit to Meta
+# WhatsApp
+
+Two ways to message families. **The default needs no Meta account**: the app composes the message and the secretary forwards it from the school's own WhatsApp number
+(Profil > Numéro WhatsApp de l'école); replies arrive in the school's WhatsApp. The rest of this file is only for the optional **automatic sending** through the official Cloud API.
+
 
 Scolaris sends WhatsApp messages through the **official WhatsApp Business Cloud API** only (never an unofficial WhatsApp Web automation: it risks the number being banned).
 Outside the 24-hour customer window only **approved templates** can be sent. One utility template covers every notice (absence, cancelled course, replacement teacher, payment reminder).

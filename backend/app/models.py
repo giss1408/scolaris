@@ -46,6 +46,9 @@ class School(Base):
     phone: Mapped[str | None] = mapped_column(String(20))  # the school's economat line, quoted in reminders
     # send reminders and notices to families by WhatsApp on its own (default off: the school opts in)
     auto_whatsapp: Mapped[bool] = mapped_column(Boolean, default=False)
+    # the school's OWN WhatsApp number (E.164): messages to families are composed by the app and forwarded from this number by the secretary;
+    # the parents' replies arrive there, in the school's WhatsApp. Required before any message is composed.
+    whatsapp_phone: Mapped[str | None] = mapped_column(String(20))
     logo: Mapped[bytes | None] = mapped_column(LargeBinary)  # the school's logo (PNG or JPEG, small), shown in the app and on documents
     logo_type: Mapped[str | None] = mapped_column(String(20))
     # the Scolaris team can block a school that is late with its monthly subscription (after reminders): staff and parents are then refused
@@ -430,13 +433,14 @@ class OutboundMessage(Base):
     params: Mapped[list] = mapped_column(JSONB, default=list)
     preview: Mapped[str] = mapped_column(Text)  # what the family reads (for the school's message log)
     dedupe_key: Mapped[str] = mapped_column(String(120))
-    status: Mapped[str] = mapped_column(String(10), default="queued")  # queued | sent | delivered | read | failed | skipped
+    status: Mapped[str] = mapped_column(String(10), default="queued")  # to_send (a person forwards it) | queued | sent | delivered | read | failed | skipped
     detail: Mapped[str | None] = mapped_column(String(200))  # why skipped / failed
     provider_id: Mapped[str | None] = mapped_column(String(100), index=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sent_by: Mapped[int | None] = mapped_column(ForeignKey("staff_member.id"))  # who forwarded it (manual sending)
 
 
 class Subscription(Base):
@@ -498,3 +502,24 @@ class PlatformAudit(Base):
     action: Mapped[str] = mapped_column(String(40))
     detail: Mapped[dict] = mapped_column(JSONB, default=dict)
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PlatformPaymentMethod(Base):
+    """Where a school pays its subscription: a Mobile Money (or bank) number of the Scolaris team, shown to every school's director and secretary."""
+
+    __tablename__ = "platform_payment_method"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    operator: Mapped[str] = mapped_column(String(16))  # wave | orange_money | mtn_momo | moov_money
+    number: Mapped[str] = mapped_column(String(20))  # E.164
+    holder: Mapped[str] = mapped_column(String(80))  # the name shown by the operator when a school sends money: lets it check it pays the right person
+    created_by: Mapped[str] = mapped_column(String(64))
+
+
+class PlatformConfig(Base):
+    """Platform-wide settings of the Scolaris team (a single row, id = 1)."""
+
+    __tablename__ = "platform_config"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    default_monthly_amount: Mapped[int | None] = mapped_column(BigInteger)  # the usual monthly price, proposed when a school's subscription is created
+    payment_note: Mapped[str | None] = mapped_column(String(240))  # shown with the payment numbers
+    updated_by: Mapped[str | None] = mapped_column(String(64))

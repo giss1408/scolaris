@@ -74,6 +74,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/grades/evaluation/:id', builder: (_, s) => GradeEntryPage(evaluationId: int.parse(s.pathParameters['id']!))),
       GoRoute(path: '/grades/report/:id', builder: (_, s) => ReportCardPage(enrollmentId: int.parse(s.pathParameters['id']!), period: int.tryParse(s.uri.queryParameters['period'] ?? '') ?? 1)),
       GoRoute(path: '/admin', builder: (_, __) => const AdminHome()),
+      GoRoute(path: '/admin/payment', builder: (_, __) => const PaymentInfoPage()),
       GoRoute(path: '/admin/schools/:id', builder: (_, s) => AdminSchoolPage(schoolId: int.parse(s.pathParameters['id']!))),
       GoRoute(path: '/messages', builder: (_, __) => const MessagesPage()),
       GoRoute(path: '/billing', builder: (_, __) => const BillingPage()),

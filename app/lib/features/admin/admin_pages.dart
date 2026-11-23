@@ -22,7 +22,10 @@ class AdminHome extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final list = ref.watch(adminSchoolsProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text(S.schools), actions: [IconButton(tooltip: S.signOut, icon: const Icon(Icons.logout), onPressed: () => ref.read(sessionProvider.notifier).signOut())]),
+      appBar: AppBar(title: const Text(S.schools), actions: [
+          IconButton(tooltip: S.paymentNumbers, icon: const Icon(Icons.account_balance_wallet_outlined), onPressed: () => context.push('/admin/payment')),
+          IconButton(tooltip: S.signOut, icon: const Icon(Icons.logout), onPressed: () => ref.read(sessionProvider.notifier).signOut()),
+        ]),
       body: AsyncView<List<AdminSchool>>(
         value: list,
         onRetry: () => ref.invalidate(adminSchoolsProvider),
@@ -265,10 +268,11 @@ class _SubscriptionSheetState extends ConsumerState<_SubscriptionSheet> {
   }
 
   Future<void> _save() async {
-    final amount = parseFcfa(_amount.text);
+    final amount = parseFcfa(_amount.text); // empty: the platform's default price is used by the server
     final day = int.tryParse(_day.text);
     final grace = int.tryParse(_grace.text) ?? 5;
-    if (amount == null || amount <= 0 || day == null || day < 1 || day > 28) {
+    final fallback = ref.read(paymentInfoProvider).valueOrNull?.defaultMonthlyAmount;
+    if ((amount == null && fallback == null) || (amount != null && amount <= 0) || day == null || day < 1 || day > 28) {
       setState(() => _error = 'Indiquez un montant et un jour entre 1 et 28.');
       return;
     }
@@ -292,7 +296,7 @@ class _SubscriptionSheetState extends ConsumerState<_SubscriptionSheet> {
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Text(S.setSubscription, style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: Space.md),
-          TextField(controller: _amount, keyboardType: TextInputType.number, inputFormatters: [FilteringTextInputFormatter.digitsOnly, FcfaInputFormatter()], decoration: const InputDecoration(labelText: S.monthlyAmount, suffixText: 'FCFA')),
+          TextField(controller: _amount, keyboardType: TextInputType.number, inputFormatters: [FilteringTextInputFormatter.digitsOnly, FcfaInputFormatter()], decoration: InputDecoration(labelText: S.monthlyAmount, suffixText: 'FCFA', helperText: ref.watch(paymentInfoProvider).valueOrNull?.defaultMonthlyAmount == null ? null : '${S.emptyMeansDefault} (${formatFcfa(ref.watch(paymentInfoProvider).value!.defaultMonthlyAmount!)})')),
           const SizedBox(height: Space.md),
           Row(children: [
             Expanded(child: TextField(controller: _day, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: S.billingDay))),
@@ -373,6 +377,167 @@ class _PaymentSheetState extends ConsumerState<_PaymentSheet> {
           if (_error != null) Padding(padding: const EdgeInsets.only(top: Space.md), child: Text(_error!, style: const TextStyle(color: Palette.danger))),
           const SizedBox(height: Space.lg),
           BusyButton(label: S.recordPayment, onPressed: _save, busy: _busy),
+        ]),
+      );
+}
+
+
+/// The numbers schools pay their subscription to (every school's director and secretary sees them), and the usual monthly price.
+class PaymentInfoPage extends ConsumerStatefulWidget {
+  const PaymentInfoPage({super.key});
+
+  @override
+  ConsumerState<PaymentInfoPage> createState() => _PaymentInfoPageState();
+}
+
+class _PaymentInfoPageState extends ConsumerState<PaymentInfoPage> {
+  List<PayMethod>? _methods;
+  final _price = TextEditingController();
+  final _note = TextEditingController();
+  bool _loaded = false;
+  bool _dirty = false;
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _price.dispose();
+    _note.dispose();
+    super.dispose();
+  }
+
+  void _load(PaymentInfo i) {
+    if (_loaded) return;
+    _loaded = true;
+    _methods = [...i.methods];
+    _price.text = i.defaultMonthlyAmount == null ? '' : formatFcfa(i.defaultMonthlyAmount!, unit: false);
+    _note.text = i.note ?? '';
+  }
+
+  Future<void> _add() async {
+    final m = await showModalBottomSheet<PayMethod>(context: context, isScrollControlled: true, builder: (_) => const _MethodSheet());
+    if (m != null) {
+      setState(() {
+        _methods = [..._methods!, m];
+        _dirty = true;
+      });
+    }
+  }
+
+  Future<void> _save() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final ok = await withStepUp<bool>(context, ref, () async {
+        await ref.read(repoProvider).adminSetPaymentInfo(_methods!, defaultMonthlyAmount: parseFcfa(_price.text), note: _note.text);
+        return true;
+      });
+      if (ok == true) {
+        ref.invalidate(paymentInfoProvider);
+        if (mounted) {
+          setState(() => _dirty = false);
+          showMessage(context, S.paymentNumbersSaved);
+        }
+      }
+    } catch (e) {
+      if (mounted) setState(() => _error = userMessage(e));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final info = ref.watch(paymentInfoProvider);
+    final t = Theme.of(context).textTheme;
+    return Scaffold(
+      appBar: AppBar(title: const Text(S.paymentNumbers)),
+      body: AsyncView<PaymentInfo>(
+        value: info,
+        onRetry: () => ref.invalidate(paymentInfoProvider),
+        data: (i) {
+          _load(i);
+          return ListView(padding: const EdgeInsets.all(Space.md), children: [
+            const InfoBanner(S.paymentNumbersHelp, icon: Icons.shield_outlined),
+            const SizedBox(height: Space.md),
+            for (var k = 0; k < _methods!.length; k++)
+              Padding(
+                padding: const EdgeInsets.only(bottom: Space.sm),
+                child: RowCard(
+                  leading: const Icon(Icons.phone_android_outlined, color: Palette.accent),
+                  title: '${S.methodLabel(_methods![k].operator)} · ${_methods![k].number}',
+                  subtitle: _methods![k].holder,
+                  trailing: IconButton(tooltip: S.remove, icon: const Icon(Icons.delete_outline), onPressed: () => setState(() { _methods = [..._methods!]..removeAt(k); _dirty = true; })),
+                ),
+              ),
+            if (_methods!.length < 6) OutlinedButton.icon(onPressed: _add, icon: const Icon(Icons.add), label: const Text(S.addNumber)),
+            const SizedBox(height: Space.lg),
+            TextField(
+              controller: _price,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly, FcfaInputFormatter()],
+              onChanged: (_) => setState(() => _dirty = true),
+              decoration: const InputDecoration(labelText: S.defaultPrice, suffixText: 'FCFA', helperText: S.defaultPriceHelp, helperMaxLines: 3),
+            ),
+            const SizedBox(height: Space.md),
+            TextField(controller: _note, maxLength: 240, onChanged: (_) => setState(() => _dirty = true), decoration: const InputDecoration(labelText: S.paymentNote)),
+            if (_error != null) Padding(padding: const EdgeInsets.only(top: Space.sm), child: Text(_error!, style: t.bodyMedium?.copyWith(color: Palette.danger))),
+            const SizedBox(height: Space.md),
+            if (_dirty) BusyButton(label: S.save, onPressed: _save, busy: _busy),
+          ]);
+        },
+      ),
+    );
+  }
+}
+
+class _MethodSheet extends StatefulWidget {
+  const _MethodSheet();
+
+  @override
+  State<_MethodSheet> createState() => _MethodSheetState();
+}
+
+class _MethodSheetState extends State<_MethodSheet> {
+  String _operator = 'wave';
+  final _number = TextEditingController();
+  final _holder = TextEditingController();
+  String? _error;
+
+  @override
+  void dispose() {
+    _number.dispose();
+    _holder.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(Space.md, 0, Space.md, MediaQuery.viewInsetsOf(context).bottom + Space.md),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text(S.addNumber, style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: Space.md),
+          Text(S.operatorLabel, style: Theme.of(context).textTheme.labelMedium),
+          const SizedBox(height: Space.sm),
+          Wrap(spacing: Space.sm, runSpacing: Space.sm, children: [for (final o in const ['wave', 'orange_money', 'mtn_momo', 'moov_money']) ChoiceChip(label: Text(S.methodLabel(o)), selected: _operator == o, onSelected: (_) => setState(() => _operator = o))]),
+          const SizedBox(height: Space.md),
+          TextField(controller: _number, keyboardType: TextInputType.phone, inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9+ ]'))], decoration: const InputDecoration(labelText: S.phone, helperText: S.phoneHelp)),
+          const SizedBox(height: Space.md),
+          TextField(controller: _holder, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: S.holderName)),
+          if (_error != null) Padding(padding: const EdgeInsets.only(top: Space.md), child: Text(_error!, style: const TextStyle(color: Palette.danger))),
+          const SizedBox(height: Space.lg),
+          FilledButton(
+            onPressed: () {
+              if (_number.text.replaceAll(RegExp(r'\D'), '').length < 10 || _holder.text.trim().length < 2) {
+                setState(() => _error = 'Entrez les 10 chiffres du numéro et le nom du titulaire.');
+                return;
+              }
+              Navigator.pop(context, PayMethod(operator: _operator, number: _number.text.trim(), holder: _holder.text.trim()));
+            },
+            child: const Text(S.addNumber),
+          ),
         ]),
       );
 }
