@@ -1,0 +1,9 @@
+.env
+.env.platform
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+var/
+build/
+.dart_tool/

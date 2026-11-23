@@ -1,0 +1,25 @@
+# scolaris on the shared platform. Postgres/Redis/Caddy come from platform/infra; this file runs only the app.
+name: scolaris
+
+services:
+  web:
+    build:
+      context: ./backend
+      additional_contexts:
+        kit: ../platform/kit
+    image: scolaris-backend:local
+    container_name: scolaris-web
+    env_file: .env.platform
+    restart: unless-stopped
+    networks: [infra_net]
+    mem_limit: 512m
+    cpus: 1.0
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 200
+
+networks:
+  infra_net:
+    external: true
