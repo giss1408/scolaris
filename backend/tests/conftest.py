@@ -10,6 +10,7 @@ os.environ.update({
     "SCO_FIELD_ENCRYPTION_KEY": base64.b64encode(b"e" * 32).decode(),
     "SCO_HASH_KEY": base64.b64encode(b"h" * 32).decode(),
     "SCO_SSO_ISSUER": "http://auth.test",
+    "SCO_METRICS_TOKEN": "t" * 40,
 })
 
 import asyncpg  # noqa: E402
