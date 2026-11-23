@@ -8,16 +8,25 @@ jobs:
     services:
       postgres:
         image: postgres:17-alpine
-        env: {POSTGRES_USER: scolaris, POSTGRES_PASSWORD: scolaris, POSTGRES_DB: scolaris}
+        env:
+          POSTGRES_USER: scolaris
+          POSTGRES_PASSWORD: scolaris
+          POSTGRES_DB: scolaris
         ports: ["5440:5432"]
         options: --health-cmd "pg_isready -U scolaris" --health-interval 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
-        with: {path: scolaris}
+        with:
+          path: scolaris
       - uses: actions/checkout@v4
-        with: {repository: ${{ github.repository_owner }}/platform, path: platform}
+        with:
+          repository: ${{ github.repository_owner }}/regisse-platform
+          path: platform
+          # if the platform repo is private, give this repository a read-only token in the secret PLATFORM_READ_TOKEN
+          token: ${{ secrets.PLATFORM_READ_TOKEN || github.token }}
       - uses: actions/setup-python@v5
-        with: {python-version: "3.12"}
+        with:
+          python-version: "3.12"
       - run: pip install -r scolaris/backend/requirements-dev.txt "./platform/kit[sso,fastapi]" "pyjwt[crypto]"
       - run: pip install pip-audit && pip-audit -r scolaris/backend/requirements.txt --strict
       - run: cd scolaris/backend && python -m pytest -q
@@ -32,5 +41,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
-        with: {flutter-version: "3.24.2"}
+        with:
+          flutter-version: "3.24.2"
       - run: cd app && flutter pub get && flutter analyze && flutter test
