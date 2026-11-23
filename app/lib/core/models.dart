@@ -194,10 +194,26 @@ class ArrearsFamily {
 
 @immutable
 class Classroom {
-  const Classroom({required this.id, required this.name, required this.level});
+  const Classroom({required this.id, required this.name, required this.level, this.isHead = false});
   final int id;
   final String name, level;
-  factory Classroom.fromJson(Map<String, dynamic> j) => Classroom(id: j['id'] as int, name: j['name'] as String, level: j['level'] as String);
+
+  /// The caller is this class's head teacher (professeur principal): she writes conduct and appreciation.
+  final bool isHead;
+  factory Classroom.fromJson(Map<String, dynamic> j) => Classroom(id: j['id'] as int, name: j['name'] as String, level: j['level'] as String, isHead: j['is_head'] == true);
+}
+
+@immutable
+class ClassTeachers {
+  const ClassTeachers({this.headTeacherId, this.assignments = const []});
+  final int? headTeacherId;
+
+  /// subjectId null = all the subjects she gives in this class.
+  final List<({int staffId, String name, int? subjectId})> assignments;
+  factory ClassTeachers.fromJson(Map<String, dynamic> j) => ClassTeachers(
+        headTeacherId: j['head_teacher_id'] as int?,
+        assignments: [for (final a in j['assignments'] as List) (staffId: a['staff_id'] as int, name: a['name'] as String, subjectId: a['subject_id'] as int?)],
+      );
 }
 
 @immutable

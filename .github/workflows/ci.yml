@@ -27,7 +27,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r scolaris/backend/requirements-dev.txt "./platform/kit[sso,fastapi]" "pyjwt[crypto]"
+      - run: pip install -r scolaris/backend/requirements-dev.txt "./platform/kit[sso,fastapi,observability]" "pyjwt[crypto]"
       - run: pip install pip-audit && pip-audit -r scolaris/backend/requirements.txt --strict
       - run: cd scolaris/backend && python -m pytest -q
       - name: migrations are in sync with the models

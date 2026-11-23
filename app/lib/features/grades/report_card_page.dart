@@ -33,7 +33,11 @@ class ReportCardPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final key = (enrollmentId: enrollmentId, period: period);
     final card = ref.watch(parent ? childReportCardProvider(key) : reportCardProvider(key));
-    final canEdit = !parent && ref.watch(meProvider).canGrade;
+    final me = parent ? null : ref.watch(meProvider);
+    final classes = parent ? null : ref.watch(classroomsProvider).valueOrNull;
+    final cardClass = card.valueOrNull?.classroom;
+    // conduct and appreciation: the director and secretary, or a teacher only as the head teacher of THIS class (the server enforces it too)
+    final canEdit = me != null && me.canGrade && (me.role != 'teacher' || (classes?.any((c) => c.name == cardClass && c.isHead) ?? false));
     return Scaffold(
       appBar: AppBar(title: const Text(S.reportCard)),
       body: AsyncView<ReportCard>(

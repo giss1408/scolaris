@@ -21,7 +21,7 @@ class GradesPage extends ConsumerWidget {
         value: rooms,
         onRetry: () => ref.invalidate(classroomsProvider),
         isEmpty: (l) => l.isEmpty,
-        empty: const EmptyState(icon: Icons.meeting_room_outlined, message: "Aucune classe n'est créée pour cette année."),
+        empty: EmptyState(icon: Icons.meeting_room_outlined, message: ref.watch(meProvider).role == 'teacher' ? S.noClassAssigned : "Aucune classe n'est créée pour cette année."),
         data: (list) => RefreshIndicator(
           onRefresh: () async {
             ref.invalidate(classroomsProvider);
@@ -38,7 +38,7 @@ class GradesPage extends ConsumerWidget {
                 leading: const Icon(Icons.menu_book_outlined, color: Palette.accent),
                 title: r.name,
                 subtitle: 'Niveau ${r.level}',
-                trailing: const Icon(Icons.chevron_right),
+                trailing: r.isHead ? const StatusBadge(S.headTeacher, tone: Tone.info, icon: Icons.star_outline) : const Icon(Icons.chevron_right),
                 onTap: () => context.push('/grades/class/${r.id}?name=${Uri.encodeComponent(r.name)}&level=${r.level}'),
               );
             },

@@ -142,6 +142,16 @@ class RemarkIn(BaseModel):
     decision: Literal["passage", "redoublement", "exclusion", "reorientation"] | None = None
 
 
+class TeacherAssignmentIn(BaseModel):
+    staff_id: int
+    subject_id: int | None = None  # None: all the subjects she gives in this class
+
+
+class ClassTeachersIn(BaseModel):
+    head_teacher_id: int | None = None
+    assignments: list[TeacherAssignmentIn] = []
+
+
 class AbsenceIn(BaseModel):
     enrollment_id: int
     kind: Literal["absence", "retard"] = "absence"

@@ -60,7 +60,9 @@ abstract class SchoolRepo {
   Future<List<StaffRow>> staff();
   Future<void> addStaff(String name, String phone, String role);
   Future<void> removeStaff(int id);
-  Future<List<Subject>> subjects();
+  Future<List<Subject>> subjects({int? classroomId});
+  Future<ClassTeachers> classTeachers(int classroomId);
+  Future<void> saveClassTeachers(int classroomId, {int? headTeacherId, required List<({int staffId, int? subjectId})> assignments});
   Future<Subject> addSubject(String name);
   Future<Map<int, int>> coefficients(int yearId, String level);
   Future<void> saveCoefficients(int yearId, String level, Map<int, int> coefs);
@@ -191,7 +193,18 @@ class HttpRepo implements SchoolRepo {
   Future<void> removeStaff(int id) => _send<Object?>('DELETE', '/v1/staff/$id');
 
   @override
-  Future<List<Subject>> subjects() async => [for (final j in await _get<List<dynamic>>('/v1/subjects')) Subject.fromJson(j as Map<String, dynamic>)];
+  Future<List<Subject>> subjects({int? classroomId}) async =>
+      [for (final j in await _get<List<dynamic>>('/v1/subjects', q: {if (classroomId != null) 'classroom_id': classroomId})) Subject.fromJson(j as Map<String, dynamic>)];
+
+  @override
+  Future<ClassTeachers> classTeachers(int classroomId) async => ClassTeachers.fromJson(await _get<Map<String, dynamic>>('/v1/classrooms/$classroomId/teachers'));
+
+  @override
+  Future<void> saveClassTeachers(int classroomId, {int? headTeacherId, required List<({int staffId, int? subjectId})> assignments}) =>
+      _send<Object?>('PUT', '/v1/classrooms/$classroomId/teachers', body: {
+        'head_teacher_id': headTeacherId,
+        'assignments': [for (final a in assignments) {'staff_id': a.staffId, 'subject_id': a.subjectId}],
+      });
 
   @override
   Future<Subject> addSubject(String name) async => Subject.fromJson(await _send<Map<String, dynamic>>('POST', '/v1/subjects', body: {'name': name.trim()}));

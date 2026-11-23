@@ -14,7 +14,12 @@ async def class_with_students(client, s, names=("Aya", "Koffi", "Mariam", "Yao")
     fr = (await client.post("/v1/subjects", json={"name": "Français"}, headers=d)).json()["id"]
     sport = (await client.post("/v1/subjects", json={"name": "EPS"}, headers=d)).json()["id"]
     await client.put("/v1/coefficients", json={"year_id": s["year_id"], "level": "6e", "lines": [{"subject_id": maths, "coef": 3}, {"subject_id": fr, "coef": 2}, {"subject_id": sport, "coef": 0}]}, headers=d)
-    return room, ids, {"maths": maths, "fr": fr, "sport": sport}
+    # Prof Math gives maths (and is the head teacher), Prof Francais gives French: nobody teaches a class she was not assigned
+    staff = {x["name"]: x["id"] for x in (await client.get("/v1/staff", headers=d)).json()}
+    r = await client.put(f"/v1/classrooms/{room['id']}/teachers", json={"head_teacher_id": staff["Prof Math"], "assignments": [
+        {"staff_id": staff["Prof Math"], "subject_id": maths}, {"staff_id": staff["Prof Francais"], "subject_id": fr}]}, headers=d)
+    assert r.status_code == 200, r.text
+    return room, ids, {"maths": maths, "fr": fr, "sport": sport, "staff": staff}
 
 
 async def make_eval(client, headers, room, subject, period=1, kind="devoir", max_score=20):

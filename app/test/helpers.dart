@@ -93,9 +93,10 @@ class FakeRepo implements SchoolRepo {
       );
 
   @override
-  Future<List<Classroom>> classrooms(int yearId) async => const [Classroom(id: 1, name: '6e 1', level: '6e')];
+  Future<List<Classroom>> classrooms(int yearId) async => rooms;
   @override
-  Future<List<StaffRow>> staff() async => const [StaffRow(id: 1, name: 'Awa Koné', role: 'director', active: true), StaffRow(id: 2, name: 'Marie Caisse', role: 'accountant', active: true)];
+  Future<List<StaffRow>> staff() async => staffRows;
+  List<StaffRow> staffRows = const [StaffRow(id: 1, name: 'Awa Koné', role: 'director', active: true), StaffRow(id: 2, name: 'Marie Caisse', role: 'accountant', active: true), StaffRow(id: 3, name: 'Prof Math', role: 'teacher', active: true), StaffRow(id: 4, name: 'Prof Francais', role: 'teacher', active: true)];
 
   @override
   Future<StudentRow> createStudent(NewStudent s) => throw UnimplementedError();
@@ -137,7 +138,19 @@ class FakeRepo implements SchoolRepo {
   final savedGrades = <GradeRow>[];
 
   @override
-  Future<List<Subject>> subjects() async => const [Subject(id: 1, name: 'Mathématiques'), Subject(id: 2, name: 'Français')];
+  Future<List<Subject>> subjects({int? classroomId}) async =>
+      classroomId != null && mySubjectIds != null ? [for (final s in _all) if (mySubjectIds!.contains(s.id)) s] : _all;
+  static const _all = [Subject(id: 1, name: 'Mathématiques'), Subject(id: 2, name: 'Français')];
+
+  /// What a teacher may give in the class (null = everything).
+  Set<int>? mySubjectIds;
+  List<Classroom> rooms = const [Classroom(id: 1, name: '6e 1', level: '6e')];
+  ClassTeachers teachers = const ClassTeachers(headTeacherId: null, assignments: [(staffId: 3, name: 'Prof Math', subjectId: 1)]);
+  ({int? head, List<({int staffId, int? subjectId})> list})? savedTeachers;
+  @override
+  Future<ClassTeachers> classTeachers(int classroomId) async => teachers;
+  @override
+  Future<void> saveClassTeachers(int classroomId, {int? headTeacherId, required List<({int staffId, int? subjectId})> assignments}) async => savedTeachers = (head: headTeacherId, list: assignments);
   @override
   Future<Subject> addSubject(String name) async => Subject(id: 9, name: name);
   @override

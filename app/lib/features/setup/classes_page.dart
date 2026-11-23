@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/errors.dart';
 import '../../core/models.dart';
@@ -33,7 +34,13 @@ class ClassesPage extends ConsumerWidget {
           padding: const EdgeInsets.fromLTRB(Space.md, 0, Space.md, 96),
           itemCount: list.length,
           separatorBuilder: (_, __) => const SizedBox(height: Space.sm),
-          itemBuilder: (_, i) => RowCard(leading: const Icon(Icons.meeting_room_outlined), title: list[i].name, subtitle: 'Niveau ${list[i].level}'),
+          itemBuilder: (context, i) => RowCard(
+            leading: const Icon(Icons.meeting_room_outlined),
+            title: list[i].name,
+            subtitle: 'Niveau ${list[i].level} · ${S.classTeachers}',
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/classes/${list[i].id}/teachers?name=${Uri.encodeComponent(list[i].name)}'),
+          ),
         ),
       ),
     );

@@ -19,6 +19,10 @@ final classroomsProvider = FutureProvider.autoDispose<List<Classroom>>((ref) => 
 final staffProvider = FutureProvider.autoDispose<List<StaffRow>>((ref) => ref.watch(repoProvider).staff());
 
 final subjectsProvider = FutureProvider.autoDispose<List<Subject>>((ref) => ref.watch(repoProvider).subjects());
+
+/// The subjects the signed-in person may give in one class (a teacher: only hers).
+final classSubjectsProvider = FutureProvider.autoDispose.family<List<Subject>, int>((ref, classroomId) => ref.watch(repoProvider).subjects(classroomId: classroomId));
+final classTeachersProvider = FutureProvider.autoDispose.family<ClassTeachers, int>((ref, classroomId) => ref.watch(repoProvider).classTeachers(classroomId));
 final evaluationsProvider = FutureProvider.autoDispose.family<List<Evaluation>, int>((ref, classroomId) => ref.watch(repoProvider).evaluations(classroomId));
 final resultsProvider = FutureProvider.autoDispose.family<ClassResults, ({int classroomId, int period})>((ref, k) => ref.watch(repoProvider).results(k.classroomId, k.period));
 final reportCardProvider = FutureProvider.autoDispose.family<ReportCard, ({int enrollmentId, int period})>((ref, k) => ref.watch(repoProvider).reportCard(k.enrollmentId, k.period));

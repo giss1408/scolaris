@@ -167,6 +167,17 @@ abstract final class S {
   static String kindEval(String k) => switch (k) { 'devoir' => 'Devoir', 'interrogation' => 'Interrogation', 'composition' => 'Composition', _ => k };
   static String honourLabel(String h) => switch (h) { 'felicitations' => 'Félicitations', 'encouragements' => 'Encouragements', 'tableau_honneur' => "Tableau d'honneur", _ => h };
 
+  // Teacher assignments
+  static const noClassAssigned = "Aucune classe ne vous est attribuée pour le moment. Demandez au directeur de vous affecter à vos classes.";
+  static const headTeacher = 'Professeur principal';
+  static const classTeachers = 'Enseignants de la classe';
+  static const assignTeacher = 'Affecter un enseignant';
+  static const allSubjects = 'Toutes les matières';
+  static const noTeachers = "Aucun enseignant dans l'équipe. Ajoutez-en depuis Profil > Équipe.";
+  static const noAssignments = "Personne n'est encore affecté à cette classe.";
+  static const noSubjectForYou = "Aucune matière ne vous est attribuée dans cette classe.";
+  static const assignmentsSaved = 'Affectations enregistrées';
+
   // Reminders
   static const reminders = 'Relances';
   static const noReminders = "Aucune relance à envoyer aujourd'hui.";

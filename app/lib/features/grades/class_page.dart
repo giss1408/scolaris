@@ -124,7 +124,7 @@ class _NewEvaluationSheetState extends ConsumerState<_NewEvaluationSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final subjects = ref.watch(subjectsProvider);
+    final subjects = ref.watch(classSubjectsProvider(widget.classroomId));
     final label = Theme.of(context).textTheme.labelMedium;
     return SingleChildScrollView(
       padding: EdgeInsets.fromLTRB(Space.md, 0, Space.md, MediaQuery.viewInsetsOf(context).bottom + Space.md),
@@ -137,7 +137,7 @@ class _NewEvaluationSheetState extends ConsumerState<_NewEvaluationSheet> {
           loading: () => const SkeletonBox(height: 40),
           error: (e, _) => Text(userMessage(e)),
           data: (list) => list.isEmpty
-              ? const Text(S.noSubjects)
+              ? Text(ref.watch(meProvider).role == 'teacher' ? S.noSubjectForYou : S.noSubjects)
               : Wrap(spacing: Space.sm, runSpacing: Space.sm, children: [for (final s in list) ChoiceChip(label: Text(s.name), selected: _subject == s.id, onSelected: (_) => setState(() => _subject = s.id))]),
         ),
         const SizedBox(height: Space.md),

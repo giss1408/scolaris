@@ -14,7 +14,7 @@ from app.errors import BadRequest, Conflict, NotFound
 from app.levels import FEE_KINDS, LEVELS, PAYMENT_METHODS
 from app.models import AcademicYear, AuditLog, Classroom, FeeInstallment, School, StaffMember
 from app.schemas import ClassroomIn, FeeScheduleIn, StaffIn, YearIn
-from app.services import auth_client
+from app.services import academics, auth_client
 
 router = APIRouter(prefix="/v1", tags=["school"])
 
@@ -65,7 +65,8 @@ def _room(c: Classroom) -> dict:
 @router.get("/classrooms")
 async def classrooms(year_id: int, m: Me = Depends(current_me), db: AsyncSession = Depends(get_session)) -> list[dict]:
     rows = await db.scalars(select(Classroom).where(Classroom.school_id == m.school_id, Classroom.year_id == year_id).order_by(Classroom.name))
-    return [_room(c) for c in rows]
+    visible = await academics.viewable_classroom_ids(db, m.school_id, m.role, m.staff.id, year_id)  # a teacher sees her classes only
+    return [{**_room(c), "is_head": c.head_teacher_id == m.staff.id} for c in rows if visible is None or c.id in visible]
 
 
 @router.post("/classrooms", status_code=201)

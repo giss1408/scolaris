@@ -101,6 +101,7 @@ async def list_students(
     year_id: int, q: str | None = None, classroom_id: int | None = None, limit: int = 50, offset: int = 0,
     m: Me = Depends(current_me), db: AsyncSession = Depends(get_session),
 ) -> list[dict]:
+    m.require_role("director", "accountant", "secretary")  # a teacher reaches her pupils through her classes, not the school register
     stmt = (
         select(Student, Enrollment, Classroom).join(Enrollment, Enrollment.student_id == Student.id).join(Classroom, Classroom.id == Enrollment.classroom_id)
         .where(Student.school_id == m.school_id, Enrollment.year_id == year_id, Enrollment.status == "active")
@@ -116,6 +117,7 @@ async def list_students(
 
 @router.get("/students/{student_id}")
 async def student_detail(student_id: int, m: Me = Depends(current_me), db: AsyncSession = Depends(get_session)) -> dict:
+    m.require_role("director", "accountant", "secretary")
     s = await db.scalar(select(Student).where(Student.id == student_id, Student.school_id == m.school_id))
     if s is None:
         raise NotFound("student_not_found")

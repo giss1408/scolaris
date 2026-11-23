@@ -6,8 +6,8 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.errors import NotFound
-from app.models import Absence, Classroom, Coefficient, Enrollment, Evaluation, Grade, PeriodRemark, School, Student, Subject
+from app.errors import Forbidden, NotFound
+from app.models import Absence, Classroom, TeacherAssignment, Coefficient, Enrollment, Evaluation, Grade, PeriodRemark, School, Student, Subject
 from app.services.grades import Rank, annual_average, honour, passes, period_average, rank_all, subject_average
 
 
@@ -16,6 +16,55 @@ async def get_classroom(db: AsyncSession, school_id: int, classroom_id: int) -> 
     if room is None:
         raise NotFound("classroom_not_found")
     return room
+
+
+ALL_CLASSES_ROLES = ("director", "secretary")
+
+
+async def teacher_scope(db: AsyncSession, school_id: int, role: str, staff_id: int, classroom_id: int) -> tuple[bool, bool, set[int] | None]:
+    """(may view the class, is its head teacher, subjects she may give there: None = all, a set = only these, empty = none).
+    Director and secretary see and manage every class. A teacher only has what a director assigned her; the head teacher of a
+    class can view it all (and write conduct and appreciation) without being allowed to create marks in subjects she does not give."""
+    if role in ALL_CLASSES_ROLES:
+        return True, role == "director", None
+    room = await get_classroom(db, school_id, classroom_id)
+    rows = (await db.scalars(select(TeacherAssignment).where(TeacherAssignment.school_id == school_id, TeacherAssignment.staff_id == staff_id, TeacherAssignment.classroom_id == classroom_id))).all()
+    head = room.head_teacher_id == staff_id
+    if any(r.subject_id is None for r in rows):
+        subjects: set[int] | None = None
+    else:
+        subjects = {r.subject_id for r in rows}
+    return bool(rows) or head, head, subjects
+
+
+async def require_view(db: AsyncSession, school_id: int, role: str, staff_id: int, classroom_id: int) -> None:
+    view, _, _ = await teacher_scope(db, school_id, role, staff_id, classroom_id)
+    if not view:
+        raise Forbidden("not_your_class")
+
+
+async def require_teach(db: AsyncSession, school_id: int, role: str, staff_id: int, classroom_id: int, subject_id: int) -> None:
+    view, _, subjects = await teacher_scope(db, school_id, role, staff_id, classroom_id)
+    if not view or (subjects is not None and subject_id not in subjects):
+        raise Forbidden("not_your_class" if not view else "not_your_subject")
+
+
+async def require_head(db: AsyncSession, school_id: int, role: str, staff_id: int, classroom_id: int) -> None:
+    """Conduct and appreciation: the director and secretary always; a teacher only as the HEAD teacher of that class."""
+    if role in ALL_CLASSES_ROLES:
+        return
+    _, head, _ = await teacher_scope(db, school_id, role, staff_id, classroom_id)
+    if not head:
+        raise Forbidden("head_teacher_only")
+
+
+async def viewable_classroom_ids(db: AsyncSession, school_id: int, role: str, staff_id: int, year_id: int) -> set[int] | None:
+    """None = every class of the school (director, secretary); a set for a teacher (assigned or head)."""
+    if role in ALL_CLASSES_ROLES:
+        return None
+    assigned = set((await db.scalars(select(TeacherAssignment.classroom_id).where(TeacherAssignment.school_id == school_id, TeacherAssignment.staff_id == staff_id))).all())
+    head = set((await db.scalars(select(Classroom.id).where(Classroom.school_id == school_id, Classroom.head_teacher_id == staff_id))).all())
+    return assigned | head
 
 
 async def _period_table(db: AsyncSession, school_id: int, room: Classroom, enrollments: list[Enrollment], period: int, subjects: dict[int, Subject], coefs: dict[int, int]) -> dict[int, dict[int, Decimal | None]]:

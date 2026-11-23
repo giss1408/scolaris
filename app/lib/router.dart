@@ -11,6 +11,7 @@ import 'features/grades/report_card_page.dart';
 import 'features/home/shell_page.dart';
 import 'features/money/reminders_page.dart';
 import 'features/parent/parent_pages.dart';
+import 'features/setup/class_teachers_page.dart';
 import 'features/setup/subjects_page.dart';
 import 'features/money/receipt_page.dart';
 import 'features/setup/classes_page.dart';
@@ -58,6 +59,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(path: '/receipt/:id', builder: (_, s) => ReceiptPage(paymentId: int.parse(s.pathParameters['id']!), justPaid: s.uri.queryParameters['new'] == '1')),
       GoRoute(path: '/classes', builder: (_, __) => const ClassesPage()),
+      GoRoute(path: '/classes/:id/teachers', builder: (_, s) => ClassTeachersPage(classroomId: int.parse(s.pathParameters['id']!), name: s.uri.queryParameters['name'] ?? '')),
       GoRoute(path: '/fees', builder: (_, __) => const FeesPage()),
       GoRoute(
         path: '/grades/class/:id',

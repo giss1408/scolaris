@@ -29,5 +29,22 @@ bash platform/tests/e2e_scolaris.sh       # real chain: auth -> director -> scol
 ```
 First school: `docker exec scolaris-web python -m app.cli create-school --name ... --director-name ... --director-phone ... --year 2026-2027 --starts 2026-09-14 --ends 2027-06-30`, then the platform team sends the WhatsApp activation code from the auth back office.
 
-## Roles
-`director` (everything; fresh password for discounts and cancellations), `accountant` (collect, arrears, reminders, dashboard), `secretary` (students, classrooms, grades, roll call; no money), `teacher` (grades and roll call only), `parent` (her own children, read-only). Enforced by the server; the app hides what a role cannot do.
+## Roles and permissions
+Enforced by the server on every request (the app only hides what a role can never do). Every row of data belongs to one school.
+
+| | Director | Accountant | Secretary | Teacher | Parent |
+|---|---|---|---|---|---|
+| School register (students, contacts, parents' phones) | read/write | read | read/write | **no** | her own children only |
+| Money: payments, balances, receipts, arrears, reminders | all | collect, read, remind | **no** | **no** | her own children's balance and receipts |
+| Cancel a payment, grant a discount | yes, with a fresh password | no | no | no | no |
+| Set-up (years, classes, fees, subjects, coefficients, team) | yes | no | classes only | no | no |
+| Assign teachers to classes and subjects, name head teachers | yes | no | no | no | no |
+| Grades: create an evaluation, enter marks | any class | no | any class | **only her assigned class and subject**, only her own evaluations, only while assigned | no |
+| Lock / unlock an evaluation | yes | no | no | no | no |
+| Results and report cards of a class | all | no | all | her classes (assigned or head) | her own children (no class figures) |
+| Conduct and appreciation | yes | no | yes | **only as head teacher of that class** | no |
+| Sanction and council decision | yes | no | no | no | no |
+| Roll call | any class | no | any class | her classes | read her child's absences |
+| DRENA exports | headcount + exam candidates | no | exam candidates | no | no |
+
+Teacher assignment: the director links a teacher to a class for one subject, or for all the subjects she gives there. A head teacher (professeur principal) sees the whole class and writes conduct and appreciation, but can only create marks in the subjects she is assigned. Removing an assignment closes the class to her at once; the marks she already entered stay in the results.

@@ -80,6 +80,8 @@ class Classroom(Base):
     series: Mapped[str | None] = mapped_column(String(4))
     name: Mapped[str] = mapped_column(String(40))  # "6e 2"
     capacity: Mapped[int | None] = mapped_column(Integer)
+    # the "professeur principal": sees the whole class report cards and writes conduct and appreciation
+    head_teacher_id: Mapped[int | None] = mapped_column(ForeignKey("staff_member.id"))
 
 
 class Family(Base):
@@ -335,3 +337,14 @@ class Reminder(Base):
     planned_on: Mapped[date] = mapped_column(Date)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     sent_by: Mapped[int | None] = mapped_column(ForeignKey("staff_member.id"))
+
+
+class TeacherAssignment(Base):
+    """A teacher is linked to a class, for one subject or (subject_id NULL) for all the subjects she gives there. No assignment, no access."""
+
+    __tablename__ = "teacher_assignment"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    school_id: Mapped[int] = mapped_column(ForeignKey("school.id"), index=True)
+    staff_id: Mapped[int] = mapped_column(ForeignKey("staff_member.id"), index=True)
+    classroom_id: Mapped[int] = mapped_column(ForeignKey("classroom.id", ondelete="CASCADE"), index=True)
+    subject_id: Mapped[int | None] = mapped_column(ForeignKey("subject.id"))
