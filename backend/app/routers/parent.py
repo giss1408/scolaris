@@ -66,6 +66,15 @@ async def report_card(enrollment_id: int, period: int = 1, me: ParentMe = Depend
     return card
 
 
+@router.get("/children/{enrollment_id}/timetable")
+async def timetable(enrollment_id: int, me: ParentMe = Depends(current_parent), db: AsyncSession = Depends(get_session)) -> dict:
+    enr = await _mine(db, me, enrollment_id)
+    from app.models import TimetableSlot
+    from app.routers.timetable import slots_json
+
+    return {"slots": await slots_json(db, enr.school_id, TimetableSlot.classroom_id == enr.classroom_id)}
+
+
 @router.get("/children/{enrollment_id}/absences")
 async def absences(enrollment_id: int, me: ParentMe = Depends(current_parent), db: AsyncSession = Depends(get_session)) -> list[dict]:
     enr = await _mine(db, me, enrollment_id)

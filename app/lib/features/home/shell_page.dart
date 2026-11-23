@@ -6,6 +6,7 @@ import '../../core/providers.dart';
 import '../../core/strings.dart';
 import '../grades/grades_page.dart';
 import '../money/arrears_page.dart';
+import '../timetable/timetable_pages.dart';
 import '../students/students_page.dart';
 import 'dashboard_page.dart';
 import 'profile_page.dart';
@@ -34,6 +35,7 @@ class _ShellPageState extends ConsumerState<ShellPage> {
         if (me.role != 'teacher') _Tab(S.tabStudents, Icons.groups_outlined, Icons.groups, (_) => const StudentsPage()),
         if (me.canCollect) _Tab(S.tabArrears, Icons.warning_amber_outlined, Icons.warning_amber, (_) => const ArrearsPage()),
         if (me.canGrade) _Tab(S.tabGrades, Icons.menu_book_outlined, Icons.menu_book, (_) => const GradesPage()),
+        if (me.role == 'teacher') _Tab(S.tabSchedule, Icons.calendar_view_week_outlined, Icons.calendar_view_week, (_) => const MyWeekPage()),
         _Tab(S.tabProfile, Icons.person_outline, Icons.person, (_) => const ProfilePage()),
       ];
 

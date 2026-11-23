@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_session
 from app.deps import Me, current_me
 from app.errors import BadRequest, Conflict, Forbidden, NotFound
-from app.models import Absence, AcademicYear, AuditLog, Classroom, Coefficient, Enrollment, Evaluation, Grade, PeriodRemark, StaffMember, Student, Subject, TeacherAssignment
+from app.models import Absence, AcademicYear, AuditLog, Classroom, Coefficient, Enrollment, Evaluation, Grade, PeriodRemark, StaffMember, Student, Subject, TeacherAssignment, TimetableSlot
 from app.schemas import AbsencesIn, ClassTeachersIn, CoefficientsIn, EvaluationIn, GradesIn, RemarkIn, SubjectIn
 from app.services import academics
 
@@ -277,6 +277,11 @@ async def set_class_teachers(classroom_id: int, data: ClassTeachersIn, m: Me = D
     await db.execute(delete(TeacherAssignment).where(TeacherAssignment.school_id == m.school_id, TeacherAssignment.classroom_id == room.id))
     db.add_all([TeacherAssignment(school_id=m.school_id, staff_id=sid, classroom_id=room.id, subject_id=sub) for sid, sub in sorted(wanted, key=lambda t: (t[0], t[1] or 0))])
     room.head_teacher_id = data.head_teacher_id
+    await db.flush()
+    # a period keeps its place but loses its teacher when she is no longer assigned to that class and subject
+    for slot in (await db.scalars(select(TimetableSlot).where(TimetableSlot.school_id == m.school_id, TimetableSlot.classroom_id == room.id, TimetableSlot.teacher_id.is_not(None)))).all():
+        if (slot.teacher_id, slot.subject_id) not in wanted and (slot.teacher_id, None) not in wanted:
+            slot.teacher_id = None
     db.add(AuditLog(school_id=m.school_id, actor_id=m.staff.id, action="class.teachers.set", entity="classroom", entity_id=room.id, detail={"assignments": len(wanted), "head": data.head_teacher_id}))
     await db.commit()
     return {"ok": True, "assignments": len(wanted)}

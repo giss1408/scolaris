@@ -11,6 +11,7 @@ import '../../core/sensitive.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
 import '../../core/ui.dart';
+import '../timetable/timetable_pages.dart';
 
 class ClassPage extends ConsumerWidget {
   const ClassPage({super.key, required this.classroomId, required this.name, required this.level});
@@ -19,13 +20,13 @@ class ClassPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => DefaultTabController(
-        length: 3,
+        length: 4,
         child: Scaffold(
           appBar: AppBar(
             title: Text(name),
-            bottom: const TabBar(tabs: [Tab(text: S.evaluations), Tab(text: S.results), Tab(text: S.roll)]),
+            bottom: const TabBar(isScrollable: true, tabs: [Tab(text: S.evaluations), Tab(text: S.results), Tab(text: S.roll), Tab(text: S.tabSchedule)]),
           ),
-          body: TabBarView(children: [_Evaluations(classroomId: classroomId), _Results(classroomId: classroomId), _RollCall(classroomId: classroomId)]),
+          body: TabBarView(children: [_Evaluations(classroomId: classroomId), _Results(classroomId: classroomId), _RollCall(classroomId: classroomId), ClassTimetableTab(classroomId: classroomId)]),
         ),
       );
 }

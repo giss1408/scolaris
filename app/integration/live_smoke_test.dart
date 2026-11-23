@@ -45,6 +45,7 @@ void main() {
     expect(kids.single.name, 'Fanta TRAORÉ');
     expect((await repo.childReportCard(kids.single.enrollmentId, 1)).average, '15.50');
     expect((await repo.childPayments(kids.single.enrollmentId)), isA<List>());
+    expect((await repo.childTimetable(kids.single.enrollmentId)).map((s) => s.subject), contains('Mathématiques'));
     await c.read(sessionProvider.notifier).signOut();
   }, skip: live && parentPhone.isNotEmpty ? false : 'needs SCOLARIS_LIVE=1 and LIVE_PARENT_PHONE');
 
@@ -129,6 +130,20 @@ void main() {
     expect(reminders, isNotEmpty);
     await repo.markReminderSent(reminders.first.id);
     await repo.recordPromise(reminders.first.familyId, amount: 1000, promisedFor: DateTime.now().add(const Duration(days: 5)));
+
+    // timetable through the app's real repository: add, conflict sentence from the server, read, delete
+    final tt0 = await repo.classTimetable(cm2.id);
+    expect(tt0.editable, isTrue);
+    await repo.addSlot(cm2.id, weekday: 5, start: '10:00', end: '11:00', subjectId: maths.id, room: 'LIVE-1');
+    await expectLater(
+      repo.addSlot(cm2.id, weekday: 5, start: '10:30', end: '11:30', subjectId: maths.id),
+      throwsA(isA<AppError>().having((e) => userMessage(e), 'message', contains('10:00'))),
+    );
+    final tt1 = await repo.classTimetable(cm2.id);
+    final mine = tt1.slots.firstWhere((s) => s.room == 'LIVE-1');
+    expect((mine.weekday, mine.start, mine.subject), (5, '10:00', 'Mathématiques'));
+    await repo.deleteSlot(mine.id);
+    expect((await repo.classTimetable(cm2.id)).slots.any((s) => s.room == 'LIVE-1'), isFalse);
 
     expect((await repo.dashboard(year)).students, greaterThan(0));
     expect((await repo.staff()).any((s) => s.role == 'director'), isTrue);

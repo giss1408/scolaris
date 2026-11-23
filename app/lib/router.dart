@@ -10,6 +10,7 @@ import 'features/grades/grade_entry_page.dart';
 import 'features/grades/report_card_page.dart';
 import 'features/home/shell_page.dart';
 import 'features/money/reminders_page.dart';
+import 'features/timetable/timetable_pages.dart';
 import 'features/parent/parent_pages.dart';
 import 'features/setup/class_teachers_page.dart';
 import 'features/setup/subjects_page.dart';
@@ -69,6 +70,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/grades/report/:id', builder: (_, s) => ReportCardPage(enrollmentId: int.parse(s.pathParameters['id']!), period: int.tryParse(s.uri.queryParameters['period'] ?? '') ?? 1)),
       GoRoute(path: '/parent', builder: (_, __) => const ParentShell()),
       GoRoute(path: '/parent/child/:id', builder: (_, s) => ChildPage(enrollmentId: int.parse(s.pathParameters['id']!), name: s.uri.queryParameters['name'] ?? '')),
+      GoRoute(path: '/parent/child/:id/timetable', builder: (_, s) => ChildTimetablePage(enrollmentId: int.parse(s.pathParameters['id']!), name: s.uri.queryParameters['name'] ?? '')),
       GoRoute(path: '/parent/report/:id', builder: (_, s) => ReportCardPage(enrollmentId: int.parse(s.pathParameters['id']!), period: int.tryParse(s.uri.queryParameters['period'] ?? '') ?? 1, parent: true)),
       GoRoute(path: '/reminders', builder: (_, __) => const RemindersPage()),
       GoRoute(path: '/subjects', builder: (_, __) => const SubjectsPage()),

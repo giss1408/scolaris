@@ -86,6 +86,11 @@ abstract class SchoolRepo {
   Future<ReportCard> childReportCard(int enrollmentId, int period);
   Future<List<AbsenceRow>> childAbsences(int enrollmentId);
   // exports (CSV text, semicolon separated: opens in Excel)
+  Future<ClassTimetable> classTimetable(int classroomId);
+  Future<void> addSlot(int classroomId, {required int weekday, required String start, required String end, required int subjectId, int? teacherId, String? room});
+  Future<void> deleteSlot(int slotId);
+  Future<List<Slot>> myWeek();
+  Future<List<Slot>> childTimetable(int enrollmentId);
   Future<String> headcountCsv(int yearId);
   Future<String> examCandidatesCsv(int yearId);
 }
@@ -317,4 +322,23 @@ class HttpRepo implements SchoolRepo {
 
   @override
   Future<String> examCandidatesCsv(int yearId) => _get<String>('/v1/exports/exam-candidates', q: {'year_id': yearId, 'format': 'csv'});
+
+  @override
+  Future<ClassTimetable> classTimetable(int classroomId) async => ClassTimetable.fromJson(await _get<Map<String, dynamic>>('/v1/classrooms/$classroomId/timetable'));
+
+  @override
+  Future<void> addSlot(int classroomId, {required int weekday, required String start, required String end, required int subjectId, int? teacherId, String? room}) =>
+      _send<Object?>('POST', '/v1/classrooms/$classroomId/timetable/slots', body: {
+        'weekday': weekday, 'start': start, 'end': end, 'subject_id': subjectId, 'teacher_id': teacherId, if ((room ?? '').trim().isNotEmpty) 'room': room!.trim(),
+      });
+
+  @override
+  Future<void> deleteSlot(int slotId) => _send<Object?>('DELETE', '/v1/timetable/slots/$slotId');
+
+  @override
+  Future<List<Slot>> myWeek() async => [for (final j in (await _get<Map<String, dynamic>>('/v1/timetable/me'))['slots'] as List) Slot.fromJson(j as Map<String, dynamic>)];
+
+  @override
+  Future<List<Slot>> childTimetable(int enrollmentId) async =>
+      [for (final j in (await _get<Map<String, dynamic>>('/v1/parent/children/$enrollmentId/timetable'))['slots'] as List) Slot.fromJson(j as Map<String, dynamic>)];
 }

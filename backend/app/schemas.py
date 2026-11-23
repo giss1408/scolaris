@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, time
 from decimal import Decimal
 from typing import Literal
 
@@ -166,3 +166,12 @@ class AbsencesIn(BaseModel):
     # true: the list is the COMPLETE roll call of that day for these slots, so entries removed from the list are un-recorded
     replace: bool = False
     classroom_id: int | None = None
+
+
+class SlotIn(BaseModel):
+    weekday: int = Field(ge=1, le=6)  # 1 = Monday ... 6 = Saturday
+    start: time
+    end: time
+    subject_id: int
+    teacher_id: int | None = None
+    room: str | None = Field(default=None, max_length=30)

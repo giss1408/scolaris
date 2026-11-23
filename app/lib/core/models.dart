@@ -356,3 +356,46 @@ class AbsenceRow {
   final bool justified;
   final String? reason;
 }
+
+@immutable
+class Slot {
+  const Slot({required this.id, required this.classroomId, required this.classroom, required this.weekday, required this.start, required this.end, required this.subjectId, required this.subject, this.teacherId, this.teacher, this.room});
+  final int id, classroomId, weekday, subjectId;
+  final String classroom, start, end, subject;
+  final int? teacherId;
+  final String? teacher, room;
+
+  /// 1 = Monday ... 6 = Saturday.
+  int get startMinutes => _minutes(start);
+  int get endMinutes => _minutes(end);
+  static int _minutes(String hhmm) => int.parse(hhmm.substring(0, 2)) * 60 + int.parse(hhmm.substring(3, 5));
+
+  factory Slot.fromJson(Map<String, dynamic> j) => Slot(
+        id: j['id'] as int, classroomId: j['classroom_id'] as int, classroom: j['classroom'] as String, weekday: j['weekday'] as int, start: j['start'] as String, end: j['end'] as String,
+        subjectId: j['subject_id'] as int, subject: j['subject'] as String, teacherId: j['teacher_id'] as int?, teacher: j['teacher'] as String?, room: j['room'] as String?,
+      );
+}
+
+@immutable
+class TimetableTeacher {
+  const TimetableTeacher({required this.id, required this.name, this.subjectIds});
+  final int id;
+  final String name;
+
+  /// null = all the subjects she gives in this class.
+  final List<int>? subjectIds;
+  bool gives(int subjectId) => subjectIds == null || subjectIds!.contains(subjectId);
+}
+
+@immutable
+class ClassTimetable {
+  const ClassTimetable({required this.slots, required this.editable, this.teachers = const []});
+  final List<Slot> slots;
+  final bool editable;
+  final List<TimetableTeacher> teachers;
+  factory ClassTimetable.fromJson(Map<String, dynamic> j) => ClassTimetable(
+        slots: [for (final s in j['slots'] as List) Slot.fromJson(s as Map<String, dynamic>)],
+        editable: j['editable'] == true,
+        teachers: [for (final t in (j['teachers'] as List?) ?? const []) TimetableTeacher(id: t['id'] as int, name: t['name'] as String, subjectIds: (t['subject_ids'] as List?)?.cast<int>())],
+      );
+}

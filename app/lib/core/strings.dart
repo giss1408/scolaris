@@ -167,6 +167,25 @@ abstract final class S {
   static String kindEval(String k) => switch (k) { 'devoir' => 'Devoir', 'interrogation' => 'Interrogation', 'composition' => 'Composition', _ => k };
   static String honourLabel(String h) => switch (h) { 'felicitations' => 'Félicitations', 'encouragements' => 'Encouragements', 'tableau_honneur' => "Tableau d'honneur", _ => h };
 
+  // Timetable
+  static const tabSchedule = 'Horaires';
+  static const timetable = 'Emploi du temps';
+  static const myTimetable = 'Mon emploi du temps';
+  static const addSlot = 'Ajouter un cours';
+  static const noClassToday = "Pas de cours ce jour.";
+  static const nowBadge = 'En cours';
+  static const nextBadge = 'Prochain';
+  static const noTeacher = 'Sans enseignant';
+  static const room = 'Salle';
+  static const startTime = 'Début';
+  static const endTime = 'Fin';
+  static const day = 'Jour';
+  static const noWeek = "Aucun cours n'est encore planifié.";
+  static const slotAdded = 'Cours ajouté';
+  static const removeSlotAsk = 'Supprimer ce cours ?';
+  static const days = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+  static const daysShort = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+
   // Teacher assignments
   static const noClassAssigned = "Aucune classe ne vous est attribuée pour le moment. Demandez au directeur de vous affecter à vos classes.";
   static const headTeacher = 'Professeur principal';

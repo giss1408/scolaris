@@ -8,7 +8,7 @@ from sqlalchemy import text
 from app.config import get_settings
 from app.db import SessionLocal
 from app.errors import install_error_handlers
-from app.routers import academics, exports, money, parent, reminders, school, students
+from app.routers import academics, exports, money, parent, reminders, school, students, timetable
 
 
 async def _check_db() -> None:
@@ -26,7 +26,7 @@ def create_app() -> FastAPI:
     install_observability(app, "scolaris", metrics_token=s.metrics_token or None)
     install_error_handlers(app)
     app.include_router(health_router({"db": _check_db}))
-    for r in (school.router, students.router, money.router, academics.router, reminders.router, parent.router, exports.router):
+    for r in (school.router, students.router, money.router, academics.router, reminders.router, parent.router, exports.router, timetable.router):
         app.include_router(r)
     return app
 

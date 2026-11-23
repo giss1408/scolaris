@@ -5,7 +5,7 @@ a credit note (avoir) that points back at it.
 """
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, time
 
 from sqlalchemy import (
     BigInteger,
@@ -19,6 +19,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    Time,
     UniqueConstraint,
     func,
 )
@@ -348,3 +349,19 @@ class TeacherAssignment(Base):
     staff_id: Mapped[int] = mapped_column(ForeignKey("staff_member.id"), index=True)
     classroom_id: Mapped[int] = mapped_column(ForeignKey("classroom.id", ondelete="CASCADE"), index=True)
     subject_id: Mapped[int | None] = mapped_column(ForeignKey("subject.id"))
+
+
+class TimetableSlot(Base):
+    """One period of the weekly timetable of a class. Weekday 1 = Monday ... 6 = Saturday. No overlap inside a class, for a teacher or in a room."""
+
+    __tablename__ = "timetable_slot"
+    __table_args__ = (CheckConstraint("weekday BETWEEN 1 AND 6"), CheckConstraint("end_time > start_time"))
+    id: Mapped[int] = mapped_column(primary_key=True)
+    school_id: Mapped[int] = mapped_column(ForeignKey("school.id"), index=True)
+    classroom_id: Mapped[int] = mapped_column(ForeignKey("classroom.id", ondelete="CASCADE"), index=True)
+    weekday: Mapped[int] = mapped_column(Integer)
+    start_time: Mapped[time] = mapped_column(Time)
+    end_time: Mapped[time] = mapped_column(Time)
+    subject_id: Mapped[int] = mapped_column(ForeignKey("subject.id"))
+    teacher_id: Mapped[int | None] = mapped_column(ForeignKey("staff_member.id"), index=True)
+    room: Mapped[str | None] = mapped_column(String(30))

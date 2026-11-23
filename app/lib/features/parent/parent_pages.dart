@@ -150,6 +150,7 @@ class _ChildPageState extends ConsumerState<ChildPage> {
           : _payments == null
               ? const SkeletonList(rows: 3)
               : ListView(padding: const EdgeInsets.all(Space.md), children: [
+                  OutlinedButton.icon(onPressed: () => context.push('/parent/child/${widget.enrollmentId}/timetable?name=${Uri.encodeComponent(widget.name)}'), icon: const Icon(Icons.calendar_view_week_outlined), label: const Text(S.timetable)),
                   const SectionHeader(S.reportCard),
                   Wrap(spacing: Space.sm, runSpacing: Space.sm, children: [for (final p in const [1, 2, 3, 0]) ChoiceChip(label: Text(S.periodLabel(p)), selected: _period == p, onSelected: (_) => setState(() => _period = p))]),
                   const SizedBox(height: Space.sm),

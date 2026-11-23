@@ -132,6 +132,31 @@ class FakeRepo implements SchoolRepo {
   @override
   Future<String> examCandidatesCsv(int yearId) async => 'Examen;Nom\nCEPE;TRAORE';
 
+  // timetable
+  /// The same two periods every day Monday-Saturday, so a screen that opens on "today" has something to show whatever day the tests run.
+  ClassTimetable timetable = ClassTimetable(editable: true, slots: [
+    for (var d = 1; d <= 6; d++) ...[
+      Slot(id: d * 10 + 1, classroomId: 1, classroom: '6e 1', weekday: d, start: '08:00', end: '09:00', subjectId: 1, subject: 'Mathématiques', teacherId: 3, teacher: 'Prof Math', room: 'A1'),
+      Slot(id: d * 10 + 2, classroomId: 1, classroom: '6e 1', weekday: d, start: '10:00', end: '11:00', subjectId: 2, subject: 'Français', teacherId: 4, teacher: 'Prof Francais'),
+    ],
+  ], teachers: const [TimetableTeacher(id: 3, name: 'Prof Math', subjectIds: [1]), TimetableTeacher(id: 4, name: 'Prof Francais', subjectIds: [2])]);
+  final addedSlots = <({int weekday, String start, String end, int subjectId, int? teacherId, String? room})>[];
+  final deletedSlots = <int>[];
+  AppError? addSlotError;
+  @override
+  Future<ClassTimetable> classTimetable(int classroomId) async => timetable;
+  @override
+  Future<void> addSlot(int classroomId, {required int weekday, required String start, required String end, required int subjectId, int? teacherId, String? room}) async {
+    if (addSlotError != null) throw addSlotError!;
+    addedSlots.add((weekday: weekday, start: start, end: end, subjectId: subjectId, teacherId: teacherId, room: room));
+  }
+  @override
+  Future<void> deleteSlot(int slotId) async => deletedSlots.add(slotId);
+  @override
+  Future<List<Slot>> myWeek() async => timetable.slots;
+  @override
+  Future<List<Slot>> childTimetable(int enrollmentId) async => timetable.slots;
+
   final reminderItems = <ReminderItem>[];
   final sentReminders = <int>[];
   final promises = <({int familyId, int amount})>[];

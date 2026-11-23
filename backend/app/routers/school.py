@@ -12,7 +12,7 @@ from app.db import get_session
 from app.deps import Me, current_me
 from app.errors import BadRequest, Conflict, NotFound
 from app.levels import FEE_KINDS, LEVELS, PAYMENT_METHODS
-from app.models import AcademicYear, AuditLog, Classroom, FeeInstallment, School, StaffMember
+from app.models import AcademicYear, AuditLog, Classroom, FeeInstallment, School, StaffMember, TimetableSlot
 from app.schemas import ClassroomIn, FeeScheduleIn, StaffIn, YearIn
 from app.services import academics, auth_client
 
@@ -151,6 +151,7 @@ async def remove_staff(staff_id: int, m: Me = Depends(current_me), db: AsyncSess
     if s.role == "director":
         raise BadRequest("cannot_remove_director")
     s.active = False
+    await db.execute(update(TimetableSlot).where(TimetableSlot.school_id == m.school_id, TimetableSlot.teacher_id == s.id).values(teacher_id=None))  # her periods stay, unassigned
     db.add(AuditLog(school_id=m.school_id, actor_id=m.staff.id, action="staff.removed", entity="staff", entity_id=s.id))
     await db.commit()
     await auth_client.remove_staff(s.auth_user_id)
