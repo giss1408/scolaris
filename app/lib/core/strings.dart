@@ -29,6 +29,7 @@ abstract final class S {
   static const tabStudents = 'Élèves';
   static const tabArrears = 'Impayés';
   static const tabProfile = 'Profil';
+  static const tabGrades = 'Notes';
 
   // Home
   static String hello(String name) => 'Bonjour $name';
@@ -131,10 +132,75 @@ abstract final class S {
   static const level = 'Niveau';
   static const addClass = 'Ajouter une classe';
 
+  // Grades
+  static const gradesTitle = 'Notes et bulletins';
+  static const pickClass = 'Choisissez une classe';
+  static const evaluations = 'Évaluations';
+  static const results = 'Résultats';
+  static const roll = 'Appel';
+  static const newEvaluation = 'Nouvelle évaluation';
+  static const subject = 'Matière';
+  static const period = 'Trimestre';
+  static const kind = 'Type';
+  static const outOf = 'Notée sur';
+  static const enterGrades = 'Saisir les notes';
+  static const absentLabel = 'Absent';
+  static const lockEval = 'Valider (verrouiller)';
+  static const unlockEval = 'Déverrouiller';
+  static const lockedBadge = 'Validée';
+  static const average = 'Moyenne';
+  static const rank = 'Rang';
+  static const reportCard = 'Bulletin';
+  static const conduct = 'Conduite (/20)';
+  static const appreciation = 'Appréciation';
+  static const decision = 'Décision du conseil';
+  static const sanction = 'Sanction';
+  static const yearAverage = 'Année';
+  static const subjectsTitle = 'Matières et coefficients';
+  static const addSubject = 'Ajouter une matière';
+  static const noEvaluations = "Aucune évaluation pour ce trimestre.";
+  static const noSubjects = "Ajoutez d'abord les matières (Profil > Matières et coefficients).";
+  static const markPresent = 'Présent';
+  static const late_ = 'Retard';
+  static const saveRoll = "Enregistrer l'appel";
+  static String periodLabel(int p) => p == 0 ? 'Année' : (p == 1 ? '1er trimestre' : '$p\u1d49 trimestre');
+  static String kindEval(String k) => switch (k) { 'devoir' => 'Devoir', 'interrogation' => 'Interrogation', 'composition' => 'Composition', _ => k };
+  static String honourLabel(String h) => switch (h) { 'felicitations' => 'Félicitations', 'encouragements' => 'Encouragements', 'tableau_honneur' => "Tableau d'honneur", _ => h };
+
+  // Reminders
+  static const reminders = 'Relances';
+  static const noReminders = "Aucune relance à envoyer aujourd'hui.";
+  static const sendWhatsapp = 'Envoyer sur WhatsApp';
+  static const markSent = 'Marquer comme envoyé';
+  static const skip = 'Passer';
+  static const promise = 'Promesse de paiement';
+  static const outsideHours = "Hors des heures d'envoi (7 h - 20 h) ou dimanche : mieux vaut attendre.";
+  static const sentAsk = 'Le message a-t-il été envoyé ?';
+  static String stepLabel(String s) => switch (s) { 'before' => 'Rappel avant échéance', 'late_3' => 'Premier retard', 'late_10' => 'Second rappel', 'late_20' => 'Invitation à l\'économat', 'escalate' => 'À la direction', _ => s };
+
+  // Parent space
+  static const imParent = 'Je suis parent';
+  static const imStaff = "Je travaille à l'école";
+  static const createAccount = 'Créer mon compte';
+  static const yourName = 'Votre nom';
+  static const registered = 'Compte créé. Un code vous sera envoyé sur WhatsApp : saisissez-le ici pour activer votre compte.';
+  static const myChildren = 'Mes enfants';
+  static const noChildren = "Aucun enfant n'est rattaché à votre numéro. Vérifiez auprès de l'école que votre numéro est bien enregistré.";
+  static const payAtSchool = "Pour payer : au guichet de l'école, par Wave ou Mobile Money. L'école vous remet un reçu.";
+  static const payments = 'Paiements et reçus';
+  static const absences = 'Absences et retards';
+  static const nothingYet = 'Rien pour le moment.';
+  static const headcount = 'Effectifs (DRENA)';
+  static const examCandidates = 'Candidats aux examens';
+  static const exportCopied = 'Export copié : collez-le dans Excel ou envoyez-le.';
+  static const exports = 'Exports';
+
   static String role(String r) => switch (r) {
         'director' => 'Directeur / Directrice',
         'accountant' => 'Comptable / Caissier',
         'secretary' => 'Secrétaire',
+        'teacher' => 'Enseignant(e)',
+        'parent' => 'Parent',
         _ => r,
       };
   static String methodLabel(String m) => switch (m) {

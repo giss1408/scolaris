@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/models.dart';
 import '../../core/providers.dart';
 import '../../core/strings.dart';
+import '../grades/grades_page.dart';
 import '../money/arrears_page.dart';
 import '../students/students_page.dart';
 import 'dashboard_page.dart';
@@ -26,17 +28,19 @@ class ShellPage extends ConsumerStatefulWidget {
 class _ShellPageState extends ConsumerState<ShellPage> {
   int _index = 0;
 
-  List<_Tab> _tabs(bool money) => [
-        if (money) _Tab(S.tabHome, Icons.dashboard_outlined, Icons.dashboard, (go) => DashboardPage(goTo: go)),
-        _Tab(S.tabStudents, Icons.groups_outlined, Icons.groups, (_) => const StudentsPage()),
-        if (money) _Tab(S.tabArrears, Icons.warning_amber_outlined, Icons.warning_amber, (_) => const ArrearsPage()),
+  /// Tabs by role: the accountant works with money, the teacher with grades, the secretary with both students and grades.
+  List<_Tab> _tabs(Me me) => [
+        if (me.canCollect) _Tab(S.tabHome, Icons.dashboard_outlined, Icons.dashboard, (go) => DashboardPage(goTo: go)),
+        if (me.role != 'teacher') _Tab(S.tabStudents, Icons.groups_outlined, Icons.groups, (_) => const StudentsPage()),
+        if (me.canCollect) _Tab(S.tabArrears, Icons.warning_amber_outlined, Icons.warning_amber, (_) => const ArrearsPage()),
+        if (me.canGrade) _Tab(S.tabGrades, Icons.menu_book_outlined, Icons.menu_book, (_) => const GradesPage()),
         _Tab(S.tabProfile, Icons.person_outline, Icons.person, (_) => const ProfilePage()),
       ];
 
   @override
   Widget build(BuildContext context) {
     final me = ref.watch(meProvider);
-    final tabs = _tabs(me.canCollect);
+    final tabs = _tabs(me);
     final index = _index.clamp(0, tabs.length - 1);
     void goTo(int i) => setState(() => _index = i);
     final wide = MediaQuery.sizeOf(context).width >= 840;
@@ -66,8 +70,8 @@ class _ShellPageState extends ConsumerState<ShellPage> {
   }
 }
 
-/// Index of a tab by its label (used by the dashboard shortcuts).
+/// Index of a tab by its label (used by the dashboard shortcuts; only roles that see the dashboard call it, so the tab list is the money one).
 int tabIndexOf(bool money, String label) {
-  final labels = [if (money) S.tabHome, S.tabStudents, if (money) S.tabArrears, S.tabProfile];
+  final labels = [if (money) S.tabHome, S.tabStudents, if (money) S.tabArrears];
   return labels.indexOf(label);
 }

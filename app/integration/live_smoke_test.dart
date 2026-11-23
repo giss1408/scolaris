@@ -8,6 +8,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:scolaris/core/errors.dart';
+import 'package:scolaris/core/models.dart';
 import 'package:scolaris/core/repo.dart';
 import 'package:scolaris/core/session.dart';
 
@@ -17,7 +18,35 @@ void main() {
   final live = Platform.environment['SCOLARIS_LIVE'] == '1';
   final phone = Platform.environment['LIVE_PHONE'] ?? '';
   final password = Platform.environment['LIVE_PASSWORD'] ?? '';
+  final parentPhone = Platform.environment['LIVE_PARENT_PHONE'] ?? '';
   final domain = Platform.environment['LIVE_DOMAIN'] ?? 'localhost';
+
+  test('a parent signs in to the parent space and sees her child', () async {
+    final store = MemoryTokenStore();
+    final c = ProviderContainer(overrides: [
+      tokenStoreProvider.overrideWithValue(store),
+      authDioProvider.overrideWithValue(_dio('auth-api.$domain')),
+      apiDioProvider.overrideWith((ref) {
+        final dio = _dio('scolaris-api.$domain');
+        final session = ref.read(sessionProvider.notifier);
+        dio.interceptors.add(InterceptorsWrapper(onRequest: (o, h) {
+          if (session.access != null) o.headers['Authorization'] = 'Bearer ${session.access}';
+          h.next(o);
+        }));
+        return dio;
+      }),
+    ]);
+    addTearDown(c.dispose);
+    await c.read(sessionProvider.notifier).signIn(parentPhone, password, parent: true);
+    expect(c.read(sessionProvider).parent, isTrue);
+    expect(c.read(sessionProvider).me, isNull);
+    final repo = HttpRepo(c.read(apiDioProvider));
+    final kids = await repo.children();
+    expect(kids.single.name, 'Fanta TRAORÉ');
+    expect((await repo.childReportCard(kids.single.enrollmentId, 1)).average, '15.50');
+    expect((await repo.childPayments(kids.single.enrollmentId)), isA<List>());
+    await c.read(sessionProvider.notifier).signOut();
+  }, skip: live && parentPhone.isNotEmpty ? false : 'needs SCOLARIS_LIVE=1 and LIVE_PARENT_PHONE');
 
   test('sign in, read, collect, cancel, sign out against the live platform', () async {
     final store = MemoryTokenStore();
@@ -83,6 +112,23 @@ void main() {
     account = await repo.account(created.enrollmentId);
     expect(account.account.remaining, 85000);
     expect(account.payments.first.isCreditNote, isTrue);
+
+    // slice 2 and 3 through the app's real repository
+    final subjects = await repo.subjects();
+    final maths = subjects.firstWhere((s) => s.name == 'Mathématiques');
+    final eval = await repo.addEvaluation(classroomId: cm2.id, subjectId: maths.id, period: 2, kind: 'devoir', maxScore: 20);
+    final sheet = await repo.grades(eval.id);
+    expect(sheet.rows.map((r) => r.enrollmentId), contains(created.enrollmentId));
+    await repo.saveGrades(eval.id, [GradeRow(enrollmentId: created.enrollmentId, name: 'x', value: '12.5')]);
+    final results = await repo.results(cm2.id, 2);
+    expect(results.rows.firstWhere((r) => r.enrollmentId == created.enrollmentId).average, '12.50');
+    expect((await repo.reportCard(created.enrollmentId, 2)).rank, '1er sur 1');
+    await repo.recordAbsences(cm2.id, DateTime.now(), [(enrollmentId: created.enrollmentId, kind: 'absence', justified: false)]);
+    expect((await repo.absencesOfDay(cm2.id, DateTime.now())).single.enrollmentId, created.enrollmentId);
+    final reminders = await repo.reminders();
+    expect(reminders, isNotEmpty);
+    await repo.markReminderSent(reminders.first.id);
+    await repo.recordPromise(reminders.first.familyId, amount: 1000, promisedFor: DateTime.now().add(const Duration(days: 5)));
 
     expect((await repo.dashboard(year)).students, greaterThan(0));
     expect((await repo.staff()).any((s) => s.role == 'director'), isTrue);

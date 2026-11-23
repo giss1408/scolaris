@@ -18,7 +18,7 @@ class ArrearsPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final rows = ref.watch(arrearsProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text(S.tabArrears)),
+      appBar: AppBar(title: const Text(S.tabArrears), actions: [TextButton.icon(onPressed: () => context.push('/reminders'), icon: const Icon(Icons.notifications_active_outlined), label: const Text(S.reminders))]),
       body: AsyncView<List<ArrearsFamily>>(
         value: rows,
         onRetry: () => ref.invalidate(arrearsProvider),

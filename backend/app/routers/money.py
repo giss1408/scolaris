@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import clock
 from app.db import get_session
 from app.deps import Me, current_me
 from app.errors import NotFound
@@ -18,7 +19,7 @@ router = APIRouter(prefix="/v1", tags=["money"])
 
 
 def _today() -> date:
-    return date.today()
+    return clock.now().date()
 
 
 def _account(acct: Account) -> dict:
@@ -35,6 +36,7 @@ def _payment(p: Payment) -> dict:
 
 @router.get("/enrollments/{enrollment_id}/account")
 async def enrollment_account(enrollment_id: int, m: Me = Depends(current_me), db: AsyncSession = Depends(get_session)) -> dict:
+    m.require_role("director", "accountant")
     enr, acct = await finance.account(db, m.school_id, enrollment_id, _today())
     student = await db.get(Student, enr.student_id)
     room = await db.get(Classroom, enr.classroom_id)
@@ -79,6 +81,7 @@ async def add_discount(enrollment_id: int, data: DiscountIn, m: Me = Depends(cur
 
 @router.get("/payments/{payment_id}/receipt")
 async def receipt(payment_id: int, m: Me = Depends(current_me), db: AsyncSession = Depends(get_session)) -> dict:
+    m.require_role("director", "accountant")
     """Everything the printed receipt (A4 or 80 mm ticket) needs. The number is fixed once issued; the data never changes."""
     p = await db.scalar(select(Payment).where(Payment.id == payment_id, Payment.school_id == m.school_id))
     if p is None:

@@ -115,4 +115,6 @@ async def school() -> dict:
     director, duid = await make_staff(sid, "director", "Directrice")
     accountant, _ = await make_staff(sid, "accountant", "Caissier")
     secretary, _ = await make_staff(sid, "secretary", "Secretaire")
-    return {"id": sid, "year_id": yid, "director": director, "accountant": accountant, "secretary": secretary, "director_uid": duid}
+    teacher, _ = await make_staff(sid, "teacher", "Prof Math")
+    teacher2, _ = await make_staff(sid, "teacher", "Prof Francais")
+    return {"id": sid, "year_id": yid, "director": director, "accountant": accountant, "secretary": secretary, "teacher": teacher, "teacher2": teacher2, "director_uid": duid}

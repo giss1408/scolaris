@@ -17,3 +17,11 @@ final studentProvider = FutureProvider.autoDispose.family<StudentDetail, ({int i
 final receiptProvider = FutureProvider.autoDispose.family<Receipt, int>((ref, id) => ref.watch(repoProvider).receipt(id));
 final classroomsProvider = FutureProvider.autoDispose<List<Classroom>>((ref) => ref.watch(repoProvider).classrooms(_year(ref)));
 final staffProvider = FutureProvider.autoDispose<List<StaffRow>>((ref) => ref.watch(repoProvider).staff());
+
+final subjectsProvider = FutureProvider.autoDispose<List<Subject>>((ref) => ref.watch(repoProvider).subjects());
+final evaluationsProvider = FutureProvider.autoDispose.family<List<Evaluation>, int>((ref, classroomId) => ref.watch(repoProvider).evaluations(classroomId));
+final resultsProvider = FutureProvider.autoDispose.family<ClassResults, ({int classroomId, int period})>((ref, k) => ref.watch(repoProvider).results(k.classroomId, k.period));
+final reportCardProvider = FutureProvider.autoDispose.family<ReportCard, ({int enrollmentId, int period})>((ref, k) => ref.watch(repoProvider).reportCard(k.enrollmentId, k.period));
+final childReportCardProvider = FutureProvider.autoDispose.family<ReportCard, ({int enrollmentId, int period})>((ref, k) => ref.watch(repoProvider).childReportCard(k.enrollmentId, k.period));
+final childrenProvider = FutureProvider.autoDispose<List<ChildRow>>((ref) => ref.watch(repoProvider).children());
+final remindersProvider = FutureProvider.autoDispose<List<ReminderItem>>((ref) => ref.watch(repoProvider).reminders());

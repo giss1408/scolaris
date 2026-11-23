@@ -21,7 +21,7 @@ async def create_school(a: argparse.Namespace) -> None:
     phone = normalize_ci_phone(a.director_phone, allow_test_numbers=get_settings().test_numbers)
     uid = await auth_client.enrol_staff(phone=phone, display_name=a.director_name, role="director")
     async with SessionLocal() as db:
-        school = School(name=a.name, kind=a.kind, city=a.city, code_mena=a.code_mena)
+        school = School(name=a.name, kind=a.kind, city=a.city, code_mena=a.code_mena, phone=a.phone)
         db.add(school)
         await db.flush()
         db.add(StaffMember(school_id=school.id, auth_user_id=uid, display_name=a.director_name, role="director"))
@@ -38,6 +38,7 @@ def main() -> None:
     c.add_argument("--name", required=True)
     c.add_argument("--city")
     c.add_argument("--code-mena")
+    c.add_argument("--phone", help="economat line quoted in reminders")
     c.add_argument("--kind", choices=["public", "prive_laic", "prive_confessionnel"], default="prive_laic")
     c.add_argument("--director-name", required=True)
     c.add_argument("--director-phone", required=True)

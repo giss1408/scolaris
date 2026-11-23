@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/config.dart';
 import '../../core/errors.dart';
 import '../../core/providers.dart';
+import '../../core/repo.dart';
 import '../../core/session.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
@@ -36,7 +38,13 @@ class ProfilePage extends ConsumerWidget {
             SettingsRow(icon: Icons.event_outlined, label: 'Année scolaire', value: me.yearLabel ?? 'Aucune année en cours'),
             SettingsRow(icon: Icons.meeting_room_outlined, label: S.classes, onTap: () => context.push('/classes')),
             SettingsRow(icon: Icons.request_quote_outlined, label: S.fees, onTap: () => context.push('/fees')),
+            SettingsRow(icon: Icons.menu_book_outlined, label: S.subjectsTitle, onTap: () => context.push('/subjects')),
             SettingsRow(icon: Icons.group_outlined, label: S.team, onTap: () => context.push('/team')),
+          ]),
+        if (me.isDirector)
+          SettingsGroup(title: S.exports, children: [
+            SettingsRow(icon: Icons.table_chart_outlined, label: S.headcount, onTap: () => _export(context, ref, exam: false)),
+            SettingsRow(icon: Icons.school_outlined, label: S.examCandidates, onTap: () => _export(context, ref, exam: true)),
           ]),
         SettingsGroup(title: S.application, children: [
           const SettingsRow(icon: Icons.info_outline, label: 'Version', value: Config.version),
@@ -55,6 +63,18 @@ class ProfilePage extends ConsumerWidget {
         Center(child: Text('${S.appName} · ${Config.version}', style: t.bodySmall)),
       ]),
     );
+  }
+
+  Future<void> _export(BuildContext context, WidgetRef ref, {required bool exam}) async {
+    try {
+      final year = ref.read(meProvider).yearId!;
+      final repo = ref.read(repoProvider);
+      final text = exam ? await repo.examCandidatesCsv(year) : await repo.headcountCsv(year);
+      await Clipboard.setData(ClipboardData(text: text.replaceFirst('\ufeff', '')));
+      if (context.mounted) showMessage(context, S.exportCopied);
+    } catch (e) {
+      if (context.mounted) showMessage(context, userMessage(e));
+    }
   }
 
   Future<void> _changePassword(BuildContext context, WidgetRef ref) async {

@@ -16,6 +16,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     LargeBinary,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -39,7 +40,10 @@ class School(Base):
     kind: Mapped[str] = mapped_column(String(24), default="prive_laic")
     code_mena: Mapped[str | None] = mapped_column(String(40))
     city: Mapped[str | None] = mapped_column(String(80))
+    phone: Mapped[str | None] = mapped_column(String(20))  # the school's economat line, quoted in reminders
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    # honours thresholds override (see levels.DEFAULT_HONOURS), e.g. {"felicitations": 15}
+    honour_thresholds: Mapped[dict | None] = mapped_column(JSONB)
 
 
 class StaffMember(Base):
@@ -50,7 +54,7 @@ class StaffMember(Base):
     school_id: Mapped[int] = mapped_column(ForeignKey("school.id"), index=True)
     auth_user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), unique=True)
     display_name: Mapped[str] = mapped_column(String(120))
-    role: Mapped[str] = mapped_column(String(20))  # director | accountant | secretary
+    role: Mapped[str] = mapped_column(String(20))  # director | accountant | secretary | teacher
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
@@ -219,3 +223,115 @@ class AuditLog(Base):
     entity_id: Mapped[int | None] = mapped_column(BigInteger)
     detail: Mapped[dict] = mapped_column(JSONB, default=dict)
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Subject(Base):
+    __tablename__ = "subject"
+    __table_args__ = (UniqueConstraint("school_id", "name"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    school_id: Mapped[int] = mapped_column(ForeignKey("school.id"), index=True)
+    name: Mapped[str] = mapped_column(String(60))
+
+
+class Coefficient(Base):
+    """Weight of a subject for a level in a year. A coefficient of 0 means the subject is shown but not counted."""
+
+    __tablename__ = "coefficient"
+    __table_args__ = (UniqueConstraint("school_id", "year_id", "level", "subject_id"), CheckConstraint("coef >= 0 AND coef <= 20"))
+    id: Mapped[int] = mapped_column(primary_key=True)
+    school_id: Mapped[int] = mapped_column(ForeignKey("school.id"), index=True)
+    year_id: Mapped[int] = mapped_column(ForeignKey("academic_year.id"), index=True)
+    level: Mapped[str] = mapped_column(String(10))
+    subject_id: Mapped[int] = mapped_column(ForeignKey("subject.id"))
+    coef: Mapped[int] = mapped_column(Integer)
+
+
+class Evaluation(Base):
+    """A test (devoir, interrogation, composition) given to one class in one subject for one period. Locked once validated."""
+
+    __tablename__ = "evaluation"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    school_id: Mapped[int] = mapped_column(ForeignKey("school.id"), index=True)
+    classroom_id: Mapped[int] = mapped_column(ForeignKey("classroom.id"), index=True)
+    subject_id: Mapped[int] = mapped_column(ForeignKey("subject.id"))
+    period: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String(14))
+    title: Mapped[str | None] = mapped_column(String(80))
+    held_on: Mapped[date] = mapped_column(Date, default=date.today)
+    max_score: Mapped[int] = mapped_column(Integer, default=20)  # 20 (10 allowed in primary): normalised to /20 for averages
+    created_by: Mapped[int] = mapped_column(ForeignKey("staff_member.id"))
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Grade(Base):
+    __tablename__ = "grade"
+    __table_args__ = (UniqueConstraint("evaluation_id", "enrollment_id"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    school_id: Mapped[int] = mapped_column(ForeignKey("school.id"), index=True)
+    evaluation_id: Mapped[int] = mapped_column(ForeignKey("evaluation.id", ondelete="CASCADE"), index=True)
+    enrollment_id: Mapped[int] = mapped_column(ForeignKey("enrollment.id"), index=True)
+    value: Mapped[float | None] = mapped_column(Numeric(5, 2))  # None with absent = true: not counted (never a zero)
+    absent: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class Absence(Base):
+    __tablename__ = "absence"
+    __table_args__ = (UniqueConstraint("enrollment_id", "day", "slot"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    school_id: Mapped[int] = mapped_column(ForeignKey("school.id"), index=True)
+    enrollment_id: Mapped[int] = mapped_column(ForeignKey("enrollment.id"), index=True)
+    day: Mapped[date] = mapped_column(Date)
+    slot: Mapped[str] = mapped_column(String(8), default="jour")  # matin | soir | jour
+    kind: Mapped[str] = mapped_column(String(8), default="absence")  # absence | retard
+    justified: Mapped[bool] = mapped_column(Boolean, default=False)
+    reason: Mapped[str | None] = mapped_column(String(160))
+    recorded_by: Mapped[int] = mapped_column(ForeignKey("staff_member.id"))
+
+
+class PeriodRemark(Base):
+    """What the report card carries besides marks: conduct, the teacher's appreciation, and (last period) the council's decision."""
+
+    __tablename__ = "period_remark"
+    __table_args__ = (UniqueConstraint("enrollment_id", "period"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    school_id: Mapped[int] = mapped_column(ForeignKey("school.id"), index=True)
+    enrollment_id: Mapped[int] = mapped_column(ForeignKey("enrollment.id"), index=True)
+    period: Mapped[int] = mapped_column(Integer)
+    conduct: Mapped[float | None] = mapped_column(Numeric(4, 2))  # /20
+    appreciation: Mapped[str | None] = mapped_column(String(240))
+    sanction: Mapped[str | None] = mapped_column(String(20))  # avertissement_travail | avertissement_conduite | blame
+    decision: Mapped[str | None] = mapped_column(String(16))  # passage | redoublement | exclusion | reorientation (council, a human decision)
+
+
+class PaymentPromise(Base):
+    """A family's commitment to pay ("je paie le 15"): reminders pause until the promised date."""
+
+    __tablename__ = "payment_promise"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    school_id: Mapped[int] = mapped_column(ForeignKey("school.id"), index=True)
+    family_id: Mapped[int] = mapped_column(ForeignKey("family.id"), index=True)
+    amount: Mapped[int] = mapped_column(BigInteger)
+    promised_for: Mapped[date] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(String(10), default="open")  # open | kept | broken
+    recorded_by: Mapped[int] = mapped_column(ForeignKey("staff_member.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class Reminder(Base):
+    """One message per FAMILY (all her children together) for one step of the scenario. UNIQUE (family, step, anchor): the same reminder
+    is planned once, whatever the number of times the planner runs. `anchor` = due date of the oldest line that triggered it."""
+
+    __tablename__ = "reminder"
+    __table_args__ = (UniqueConstraint("family_id", "step", "anchor"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    school_id: Mapped[int] = mapped_column(ForeignKey("school.id"), index=True)
+    family_id: Mapped[int] = mapped_column(ForeignKey("family.id"), index=True)
+    step: Mapped[str] = mapped_column(String(16))  # before | late_3 | late_10 | late_20 | escalate
+    anchor: Mapped[date] = mapped_column(Date)
+    channel: Mapped[str] = mapped_column(String(10))  # whatsapp | sms | appel | direction
+    status: Mapped[str] = mapped_column(String(10), default="planned")  # planned | sent | skipped
+    amount: Mapped[int] = mapped_column(BigInteger)  # the family's overdue (or upcoming) total at planning time
+    text: Mapped[str] = mapped_column(Text)
+    planned_on: Mapped[date] = mapped_column(Date)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sent_by: Mapped[int | None] = mapped_column(ForeignKey("staff_member.id"))

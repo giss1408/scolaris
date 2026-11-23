@@ -1,9 +1,10 @@
 from datetime import date
+from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.levels import ALL_LEVELS, DISCOUNT_KINDS, FEE_KINDS, PAYMENT_METHODS
+from app.levels import ALL_LEVELS, DISCOUNT_KINDS, EVAL_TYPES, FEE_KINDS, PAYMENT_METHODS
 
 Level = Literal[tuple(ALL_LEVELS)]  # type: ignore[valid-type]
 FeeKind = Literal[tuple(FEE_KINDS)]  # type: ignore[valid-type]
@@ -95,4 +96,63 @@ class DiscountIn(BaseModel):
 class StaffIn(BaseModel):
     display_name: str = Field(min_length=2, max_length=120)
     phone: str
-    role: Literal["accountant", "secretary"]  # the director is created by the platform team, not by herself
+    role: Literal["accountant", "secretary", "teacher"]  # the director is created by the platform team, not by herself
+
+
+class SubjectIn(BaseModel):
+    name: str = Field(min_length=2, max_length=60)
+
+
+class CoefLine(BaseModel):
+    subject_id: int
+    coef: int = Field(ge=0, le=20)
+
+
+class CoefficientsIn(BaseModel):
+    year_id: int
+    level: Level
+    lines: list[CoefLine]
+
+
+class EvaluationIn(BaseModel):
+    classroom_id: int
+    subject_id: int
+    period: int = Field(ge=1, le=3)
+    kind: Literal[tuple(EVAL_TYPES)]  # type: ignore[valid-type]
+    title: str | None = Field(default=None, max_length=80)
+    held_on: date | None = None
+    max_score: Literal[10, 20] = 20
+
+
+class GradeIn(BaseModel):
+    enrollment_id: int
+    value: Decimal | None = Field(default=None, ge=0, max_digits=5, decimal_places=2)
+    absent: bool = False
+
+
+class GradesIn(BaseModel):
+    grades: list[GradeIn]
+
+
+class RemarkIn(BaseModel):
+    period: int = Field(ge=1, le=3)
+    conduct: Decimal | None = Field(default=None, ge=0, le=20, max_digits=4, decimal_places=2)
+    appreciation: str | None = Field(default=None, max_length=240)
+    sanction: Literal["avertissement_travail", "avertissement_conduite", "blame"] | None = None
+    decision: Literal["passage", "redoublement", "exclusion", "reorientation"] | None = None
+
+
+class AbsenceIn(BaseModel):
+    enrollment_id: int
+    kind: Literal["absence", "retard"] = "absence"
+    slot: Literal["matin", "soir", "jour"] = "jour"
+    justified: bool = False
+    reason: str | None = Field(default=None, max_length=160)
+
+
+class AbsencesIn(BaseModel):
+    day: date
+    entries: list[AbsenceIn]
+    # true: the list is the COMPLETE roll call of that day for these slots, so entries removed from the list are un-recorded
+    replace: bool = False
+    classroom_id: int | None = None

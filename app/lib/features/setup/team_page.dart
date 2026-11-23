@@ -126,7 +126,7 @@ class _AddMemberSheetState extends ConsumerState<_AddMemberSheet> {
             const SizedBox(height: Space.md),
             Text(S.memberRole, style: Theme.of(context).textTheme.labelMedium),
             const SizedBox(height: Space.sm),
-            Wrap(spacing: Space.sm, children: [for (final r in const ['accountant', 'secretary']) ChoiceChip(label: Text(S.role(r)), selected: _role == r, onSelected: (_) => setState(() => _role = r))]),
+            Wrap(spacing: Space.sm, children: [for (final r in const ['accountant', 'secretary', 'teacher']) ChoiceChip(label: Text(S.role(r)), selected: _role == r, onSelected: (_) => setState(() => _role = r))]),
             if (_error != null) Padding(padding: const EdgeInsets.only(top: Space.md), child: Text(_error!, style: const TextStyle(color: Palette.danger))),
             const SizedBox(height: Space.lg),
             BusyButton(label: S.addMember, onPressed: _save, busy: _busy),

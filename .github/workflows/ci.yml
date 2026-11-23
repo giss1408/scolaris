@@ -1,0 +1,36 @@
+# NOTE: the shared kit (`regisse_kit`) lives in the platform repo (../platform/kit). This workflow expects a monorepo checkout where
+# `platform/` is next to `scolaris/`; until the kit has its own remote, adapt the checkout step (or install the kit from a tag).
+name: scolaris
+on: [push, pull_request]
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env: {POSTGRES_USER: scolaris, POSTGRES_PASSWORD: scolaris, POSTGRES_DB: scolaris}
+        ports: ["5440:5432"]
+        options: --health-cmd "pg_isready -U scolaris" --health-interval 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {path: scolaris}
+      - uses: actions/checkout@v4
+        with: {repository: ${{ github.repository_owner }}/platform, path: platform}
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -r scolaris/backend/requirements-dev.txt "./platform/kit[sso,fastapi]" "pyjwt[crypto]"
+      - run: pip install pip-audit && pip-audit -r scolaris/backend/requirements.txt --strict
+      - run: cd scolaris/backend && python -m pytest -q
+      - name: migrations are in sync with the models
+        run: |
+          cd scolaris/backend
+          export SCO_ENV=test SCO_DATABASE_URL=postgresql+asyncpg://scolaris:scolaris@localhost:5440/scolaris_mig SCO_FIELD_ENCRYPTION_KEY=$(openssl rand -hex 32) SCO_HASH_KEY=$(openssl rand -hex 32)
+          PGPASSWORD=scolaris psql -h localhost -p 5440 -U scolaris -d scolaris -c "create database scolaris_mig"
+          alembic upgrade head && alembic check
+  app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: "3.24.2"}
+      - run: cd app && flutter pub get && flutter analyze && flutter test

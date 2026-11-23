@@ -22,15 +22,20 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   final _password = TextEditingController();
   final _code = TextEditingController();
   bool _activating = false;
+  bool _parent = false; // sign in to the parent space instead of the staff app
+  bool _register = false; // a parent creating her account
+  final _name = TextEditingController();
   bool _hidden = true;
   bool _busy = false;
   String? _error;
+  String? _info;
 
   @override
   void dispose() {
     _phone.dispose();
     _password.dispose();
     _code.dispose();
+    _name.dispose();
     super.dispose();
   }
 
@@ -42,10 +47,22 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     });
     final session = ref.read(sessionProvider.notifier);
     try {
+      if (_parent && _register) {
+        await session.registerParent(_phone.text, _password.text, _name.text);
+        if (mounted) {
+          setState(() {
+            _register = false;
+            _activating = true;
+            _error = null;
+            _info = S.registered;
+          });
+        }
+        return;
+      }
       if (_activating) {
-        await session.activate(_phone.text, _code.text, _password.text);
+        await session.activate(_phone.text, _code.text, _password.text, parent: _parent);
       } else {
-        await session.signIn(_phone.text, _password.text);
+        await session.signIn(_phone.text, _password.text, parent: _parent);
       }
     } catch (e) {
       final err = mapError(e);
@@ -80,11 +97,28 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     const Align(alignment: Alignment.centerLeft, child: ScolarisLogo(size: 72)),
                     const SizedBox(height: Space.lg),
-                    Text(_activating ? S.activateTitle : S.appName, style: t.headlineMedium),
+                    Text(_register ? S.createAccount : _activating ? S.activateTitle : S.appName, style: t.headlineMedium),
                     const SizedBox(height: Space.sm),
                     Text(_activating ? S.activateHelp : "Gestion scolaire pour l'équipe de l'école.", style: t.bodyMedium?.copyWith(color: Palette.body)),
-                    const SizedBox(height: Space.xl),
+                    const SizedBox(height: Space.lg),
+                    SegmentedButton<bool>(
+                      segments: const [ButtonSegment(value: false, label: Text(S.imStaff), icon: Icon(Icons.badge_outlined)), ButtonSegment(value: true, label: Text(S.imParent), icon: Icon(Icons.family_restroom_outlined))],
+                      selected: {_parent},
+                      onSelectionChanged: _busy ? null : (s) => setState(() {
+                        _parent = s.first;
+                        _register = false;
+                        _activating = false;
+                        _error = null;
+                        _info = null;
+                      }),
+                    ),
+                    const SizedBox(height: Space.lg),
+                    if (_info != null) ...[InfoBanner(_info!, icon: Icons.check_circle_outline), const SizedBox(height: Space.md)],
                     if (notice != null && _error == null) ...[InfoBanner(notice), const SizedBox(height: Space.md)],
+                    if (_register) ...[
+                      TextFormField(controller: _name, textCapitalization: TextCapitalization.words, textInputAction: TextInputAction.next, decoration: const InputDecoration(labelText: S.yourName, prefixIcon: Icon(Icons.person_outline)), validator: (v) => (v ?? '').trim().length < 2 ? S.required : null),
+                      const SizedBox(height: Space.md),
+                    ],
                     TextFormField(
                       controller: _phone,
                       keyboardType: TextInputType.phone,
@@ -114,12 +148,12 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       autofillHints: [_activating ? AutofillHints.newPassword : AutofillHints.password],
                       onFieldSubmitted: (_) => _submit(),
                       decoration: InputDecoration(
-                        labelText: _activating ? S.newPassword : S.password,
-                        helperText: _activating ? '10 caractères minimum, avec lettres et chiffres' : null,
+                        labelText: (_activating && !_parent) || _register ? S.newPassword : S.password,
+                        helperText: (_activating && !_parent) || _register ? '10 caractères minimum, avec lettres et chiffres' : null,
                         prefixIcon: const Icon(Icons.lock_outline),
                         suffixIcon: IconButton(tooltip: _hidden ? 'Afficher le mot de passe' : 'Masquer le mot de passe', icon: Icon(_hidden ? Icons.visibility_outlined : Icons.visibility_off_outlined), onPressed: () => setState(() => _hidden = !_hidden)),
                       ),
-                      validator: (v) => (v == null || v.isEmpty) ? S.required : (_activating && v.length < 10 ? 'Au moins 10 caractères' : null),
+                      validator: (v) => (v == null || v.isEmpty) ? S.required : ((_activating && !_parent) || _register) && v.length < 10 ? 'Au moins 10 caractères' : null,
                     ),
                     if (_error != null) ...[
                       const SizedBox(height: Space.md),
@@ -130,15 +164,18 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       ])),
                     ],
                     const SizedBox(height: Space.lg),
-                    BusyButton(label: _activating ? S.activate : S.signIn, onPressed: _submit, busy: _busy),
+                    BusyButton(label: _register ? S.createAccount : _activating ? S.activate : S.signIn, onPressed: _submit, busy: _busy),
                     const SizedBox(height: Space.sm),
                     TextButton(
                       onPressed: _busy ? null : () => setState(() {
                         _activating = !_activating;
+                        _register = false;
                         _error = null;
+                        _info = null;
                       }),
-                      child: Text(_activating ? S.backToSignIn : S.haveCode),
+                      child: Text(_activating || _register ? S.backToSignIn : S.haveCode),
                     ),
+                    if (_parent && !_activating && !_register) TextButton(onPressed: _busy ? null : () => setState(() { _register = true; _error = null; }), child: const Text(S.createAccount)),
                   ]),
                 ),
               ),

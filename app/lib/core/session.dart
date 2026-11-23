@@ -44,8 +44,8 @@ class AuthService {
 
   static String digits(String phone) => phone.replaceAll(RegExp(r'[\s.\-]'), '');
 
-  Future<Map<String, dynamic>> login(String phone, String password) async {
-    final r = await _dio.post<Map<String, dynamic>>('/v1/login', data: {'phone': digits(phone), 'password': password, 'product': Config.product, 'app': Config.authApp});
+  Future<Map<String, dynamic>> login(String phone, String password, {String app = Config.authApp}) async {
+    final r = await _dio.post<Map<String, dynamic>>('/v1/login', data: {'phone': digits(phone), 'password': password, 'product': Config.product, 'app': app});
     return r.data!;
   }
 
@@ -54,8 +54,13 @@ class AuthService {
     return r.data!;
   }
 
-  Future<void> activate(String phone, String code, String password) async {
-    await _dio.post<Object?>('/v1/activate', data: {'phone': digits(phone), 'code': code.trim(), 'password': password});
+  Future<void> activate(String phone, String code, String? password) async {
+    await _dio.post<Object?>('/v1/activate', data: {'phone': digits(phone), 'code': code.trim(), if (password != null) 'password': password});
+  }
+
+  /// A parent creates her own pending account (the team then sends the WhatsApp code).
+  Future<void> register(String phone, String password, String name) async {
+    await _dio.post<Object?>('/v1/register', data: {'phone': digits(phone), 'password': password, 'display_name': name.trim(), 'product': Config.product, 'consent': true});
   }
 
   Future<void> logout(String refreshToken, String access) async {
@@ -76,9 +81,12 @@ class AuthService {
 enum SessionStatus { loading, signedOut, signedIn }
 
 class SessionState {
-  const SessionState(this.status, {this.me, this.notice});
+  const SessionState(this.status, {this.me, this.notice, this.parent = false});
   final SessionStatus status;
   final Me? me;
+
+  /// Signed in as a parent (no staff profile): she gets the parent space.
+  final bool parent;
 
   /// Shown once on the sign-in page (e.g. "session expired").
   final String? notice;
@@ -120,6 +128,7 @@ final sessionProvider = NotifierProvider<SessionController, SessionState>(Sessio
 class SessionController extends Notifier<SessionState> {
   String? _access;
   String? _refresh;
+  String? _role;
   Future<bool>? _renewing;
 
   String? get access => _access;
@@ -139,10 +148,10 @@ class SessionController extends Notifier<SessionState> {
     await _openProfile();
   }
 
-  Future<void> signIn(String phone, String password) async {
+  Future<void> signIn(String phone, String password, {bool parent = false}) async {
     final Map<String, dynamic> t;
     try {
-      t = await _auth.login(phone, password);
+      t = await _auth.login(phone, password, app: parent ? 'parent' : Config.authApp);
     } catch (e) {
       throw mapError(e);
     }
@@ -151,13 +160,21 @@ class SessionController extends Notifier<SessionState> {
     await _openProfile();
   }
 
-  Future<void> activate(String phone, String code, String password) async {
+  Future<void> activate(String phone, String code, String password, {bool parent = false}) async {
     try {
-      await _auth.activate(phone, code, password);
+      await _auth.activate(phone, code, parent ? null : password);
     } catch (e) {
       throw mapError(e);
     }
-    await signIn(phone, password);
+    await signIn(phone, password, parent: parent);
+  }
+
+  Future<void> registerParent(String phone, String password, String name) async {
+    try {
+      await _auth.register(phone, password, name);
+    } catch (e) {
+      throw mapError(e);
+    }
   }
 
   /// Renews the access token at auth. One renewal at a time: the refresh token rotates, so two in parallel would end the session.
@@ -180,10 +197,15 @@ class SessionController extends Notifier<SessionState> {
   Future<void> _adopt(Map<String, dynamic> t) async {
     _access = t['access_token'] as String;
     _refresh = t['refresh_token'] as String;
+    _role = t['role'] as String?;
     await _store.write(_refresh!);
   }
 
   Future<void> _openProfile() async {
+    if (_role == 'parent') {
+      state = const SessionState(SessionStatus.signedIn, parent: true);
+      return;
+    }
     try {
       final r = await ref.read(apiDioProvider).get<Map<String, dynamic>>('/v1/me');
       state = SessionState(SessionStatus.signedIn, me: Me.fromJson(r.data!));
@@ -231,6 +253,7 @@ class SessionController extends Notifier<SessionState> {
   Future<void> _clear() async {
     _access = null;
     _refresh = null;
+    _role = null;
     await _store.clear();
   }
 }

@@ -17,17 +17,22 @@ class FakeSession extends SessionController {
   final Me? me;
   final AppError? signInError;
   int signOuts = 0;
+  final calls = <String>[];
 
   @override
   SessionState build() => me == null ? const SessionState(SessionStatus.signedOut) : SessionState(SessionStatus.signedIn, me: me);
 
   @override
-  Future<void> signIn(String phone, String password) async {
+  Future<void> signIn(String phone, String password, {bool parent = false}) async {
+    calls.add('signIn parent=$parent');
     if (signInError != null) throw signInError!;
   }
 
   @override
-  Future<void> activate(String phone, String code, String password) async {}
+  Future<void> registerParent(String phone, String password, String name) async => calls.add('register $name');
+
+  @override
+  Future<void> activate(String phone, String code, String password, {bool parent = false}) async => calls.add('activate parent=$parent');
 
   @override
   Future<void> signOut() async {
@@ -108,6 +113,82 @@ class FakeRepo implements SchoolRepo {
   Future<void> addStaff(String name, String phone, String role) async {}
   @override
   Future<void> removeStaff(int id) async {}
+
+  List<ChildRow> kids = const [
+    ChildRow(enrollmentId: 10, name: 'Fanta TRAORE', school: 'Ecole A', classroom: '6e 1', year: '2026-2027', remaining: 205000, overdue: 100000, totalDue: 235000),
+    ChildRow(enrollmentId: 20, name: 'Moussa TRAORE', school: 'Ecole B', classroom: 'CM2 A', year: '2026-2027', remaining: 0, overdue: 0, totalDue: 85000),
+  ];
+  @override
+  Future<List<ChildRow>> children() async => kids;
+  @override
+  Future<List<PaymentRow>> childPayments(int enrollmentId) async => [PaymentRow(id: 5, kind: 'payment', amount: 30000, method: 'wave', receipt: 'REC-2026-000001', paidAt: DateTime(2026, 9, 14))];
+  @override
+  Future<ReportCard> childReportCard(int enrollmentId, int period) => reportCard(enrollmentId, period);
+  @override
+  Future<List<AbsenceRow>> childAbsences(int enrollmentId) async => [AbsenceRow(day: DateTime(2026, 10, 3), kind: 'absence', justified: false)];
+  @override
+  Future<String> headcountCsv(int yearId) async => 'Niveau;Garçons\n6e;3';
+  @override
+  Future<String> examCandidatesCsv(int yearId) async => 'Examen;Nom\nCEPE;TRAORE';
+
+  final reminderItems = <ReminderItem>[];
+  final sentReminders = <int>[];
+  final promises = <({int familyId, int amount})>[];
+  final savedGrades = <GradeRow>[];
+
+  @override
+  Future<List<Subject>> subjects() async => const [Subject(id: 1, name: 'Mathématiques'), Subject(id: 2, name: 'Français')];
+  @override
+  Future<Subject> addSubject(String name) async => Subject(id: 9, name: name);
+  @override
+  Future<Map<int, int>> coefficients(int yearId, String level) async => {1: 3, 2: 2};
+  @override
+  Future<void> saveCoefficients(int yearId, String level, Map<int, int> coefs) async {}
+  @override
+  Future<List<Evaluation>> evaluations(int classroomId, {int? period}) async =>
+      [Evaluation(id: 7, subjectId: 1, period: 1, kind: 'devoir', heldOn: DateTime(2026, 10, 12), maxScore: 20, locked: false)];
+  @override
+  Future<Evaluation> addEvaluation({required int classroomId, required int subjectId, required int period, required String kind, String? title, required int maxScore}) async =>
+      Evaluation(id: 8, subjectId: subjectId, period: period, kind: kind, heldOn: DateTime(2026, 10, 12), maxScore: maxScore, locked: false);
+  @override
+  Future<({Evaluation evaluation, List<GradeRow> rows})> grades(int evaluationId) async => (
+        evaluation: Evaluation(id: evaluationId, subjectId: 1, period: 1, kind: 'devoir', heldOn: DateTime(2026, 10, 12), maxScore: 20, locked: false),
+        rows: const [GradeRow(enrollmentId: 10, name: 'KOUASSI Aya', value: '15.00'), GradeRow(enrollmentId: 11, name: 'YAO Koffi')],
+      );
+  @override
+  Future<void> saveGrades(int evaluationId, List<GradeRow> rows) async => savedGrades.addAll(rows);
+  @override
+  Future<void> setLocked(int evaluationId, bool locked) async {}
+  @override
+  Future<ClassResults> results(int classroomId, int period) async => const ClassResults(
+        subjects: [(id: 1, name: 'Mathématiques', coef: 3)],
+        classAverage: '12.50',
+        rows: [
+          ResultRow(enrollmentId: 11, name: 'YAO Koffi', subjects: {'1': '9.00'}, average: '9.00', position: 2, passes: false),
+          ResultRow(enrollmentId: 10, name: 'KOUASSI Aya', subjects: {'1': '16.00'}, average: '16.00', position: 1, honour: 'felicitations', passes: true),
+          ResultRow(enrollmentId: 12, name: 'ZADI Mariam', subjects: {'1': null}),
+        ],
+      );
+  @override
+  Future<ReportCard> reportCard(int enrollmentId, int period) async => const ReportCard(
+        school: 'Groupe Scolaire Les Palmiers', classroom: '6e 1', period: 1, studentName: 'KOUASSI Aya', average: '16.00', rank: '1er sur 3', honour: 'felicitations', passes: true,
+        classAverage: '12.50', conduct: '17.50', appreciation: 'Élève sérieuse', absUnjustified: 1, absJustified: 2, late: 0,
+        lines: [(subject: 'Mathématiques', coef: 3, average: '16.00', classAverage: '12.50'), (subject: 'Français', coef: 2, average: null, classAverage: null)],
+      );
+  @override
+  Future<void> saveRemark(int enrollmentId, {required int period, String? conduct, String? appreciation, String? sanction, String? decision}) async {}
+  @override
+  Future<void> recordAbsences(int classroomId, DateTime day, List<({int enrollmentId, String kind, bool justified})> entries) async {}
+  @override
+  Future<List<({int enrollmentId, String kind, bool justified})>> absencesOfDay(int classroomId, DateTime day) async => const [];
+  @override
+  Future<List<ReminderItem>> reminders() async => reminderItems;
+  @override
+  Future<void> markReminderSent(int id) async => sentReminders.add(id);
+  @override
+  Future<void> skipReminder(int id) async {}
+  @override
+  Future<void> recordPromise(int familyId, {required int amount, required DateTime promisedFor}) async => promises.add((familyId: familyId, amount: amount));
 }
 
 ArrearsFamily family() => const ArrearsFamily(

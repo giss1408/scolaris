@@ -78,3 +78,35 @@ async def current_me(authorization: str | None = Header(default=None), db: Async
     if staff is None or not staff.active or staff.role != p.role:
         raise Forbidden("not_staff")
     return Me(staff=staff, principal=p)
+
+
+@dataclass
+class ParentMe:
+    """A parent signed in at auth (app `parent`). She is identified by her verified phone number: the contacts the school recorded
+    with the SAME number are hers, in every school that has her. She sees her own children only."""
+
+    principal: Principal
+    contact_ids: list[int]
+    family_ids: list[int]
+    phone_hash: str
+
+
+async def current_parent(authorization: str | None = Header(default=None), db: AsyncSession = Depends(get_session)) -> ParentMe:
+    from app.models import Contact
+    from app.security import phone_hash as _hash
+
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise Unauthorized("missing_token")
+    try:
+        p = await to_thread.run_sync(verifier().verify, authorization[7:].strip())
+    except (SsoError, httpx.HTTPError, ValueError):
+        raise Unauthorized("invalid_token") from None
+    if p.app != "parent" or p.role != "parent":
+        raise Forbidden("wrong_app")
+    if p.must_change_password:
+        raise Forbidden("password_change_required")
+    if not p.phone_key.startswith("tel:+"):
+        raise Forbidden("no_phone")
+    h = _hash(p.phone_key[4:])
+    rows = (await db.execute(select(Contact.id, Contact.family_id).where(Contact.phone_hash == h))).all()
+    return ParentMe(principal=p, contact_ids=[r[0] for r in rows], family_ids=sorted({r[1] for r in rows}), phone_hash=h)

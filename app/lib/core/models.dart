@@ -15,6 +15,7 @@ class Me {
   bool get isDirector => role == 'director';
   bool get canCollect => role == 'director' || role == 'accountant';
   bool get canEnrol => role == 'director' || role == 'secretary';
+  bool get canGrade => role == 'director' || role == 'secretary' || role == 'teacher';
 
   factory Me.fromJson(Map<String, dynamic> j) {
     final cat = (j['catalog'] as Map?) ?? const {};
@@ -218,4 +219,124 @@ class StaffRow {
   final String name, role;
   final bool active;
   factory StaffRow.fromJson(Map<String, dynamic> j) => StaffRow(id: j['id'] as int, name: j['name'] as String, role: j['role'] as String, active: j['active'] == true);
+}
+
+@immutable
+class Subject {
+  const Subject({required this.id, required this.name});
+  final int id;
+  final String name;
+  factory Subject.fromJson(Map<String, dynamic> j) => Subject(id: j['id'] as int, name: j['name'] as String);
+}
+
+@immutable
+class Evaluation {
+  const Evaluation({required this.id, required this.subjectId, required this.period, required this.kind, required this.heldOn, required this.maxScore, required this.locked, this.title});
+  final int id, subjectId, period, maxScore;
+  final String kind;
+  final String? title;
+  final DateTime heldOn;
+  final bool locked;
+  factory Evaluation.fromJson(Map<String, dynamic> j) => Evaluation(
+        id: j['id'] as int, subjectId: j['subject_id'] as int, period: j['period'] as int, kind: j['kind'] as String, title: j['title'] as String?,
+        heldOn: _d(j['held_on']), maxScore: j['max_score'] as int, locked: j['locked'] == true,
+      );
+}
+
+@immutable
+class GradeRow {
+  const GradeRow({required this.enrollmentId, required this.name, this.value, this.absent = false});
+  final int enrollmentId;
+  final String name;
+  final String? value;
+  final bool absent;
+}
+
+@immutable
+class ResultRow {
+  const ResultRow({required this.enrollmentId, required this.name, required this.subjects, this.average, this.position, this.tie = false, this.honour, this.passes});
+  final int enrollmentId;
+  final String name;
+  final Map<String, String?> subjects;
+  final String? average, honour;
+  final int? position;
+  final bool tie;
+  final bool? passes;
+  String get rankLabel => position == null ? '—' : '$position${position == 1 ? 'er' : 'e'}${tie ? ' ex' : ''}';
+}
+
+@immutable
+class ClassResults {
+  const ClassResults({required this.subjects, required this.rows, this.classAverage});
+  final List<({int id, String name, int coef})> subjects;
+  final List<ResultRow> rows;
+  final String? classAverage;
+  factory ClassResults.fromJson(Map<String, dynamic> j) => ClassResults(
+        subjects: [for (final s in j['subjects'] as List) (id: s['id'] as int, name: s['name'] as String, coef: s['coef'] as int)],
+        classAverage: j['class_average'] as String?,
+        rows: [
+          for (final r in j['rows'] as List)
+            ResultRow(
+              enrollmentId: r['enrollment_id'] as int, name: r['name'] as String, average: r['average'] as String?, honour: r['honour'] as String?, passes: r['passes'] as bool?,
+              subjects: {for (final e in (r['subjects'] as Map).entries) e.key as String: e.value as String?},
+              position: (r['rank'] as Map?)?['position'] as int?, tie: (r['rank'] as Map?)?['tie'] == true,
+            ),
+        ],
+      );
+}
+
+@immutable
+class ReportCard {
+  const ReportCard({required this.school, required this.classroom, required this.period, required this.studentName, required this.lines, this.average, this.rank, this.honour, this.passes, this.classAverage, this.conduct, this.appreciation, this.sanction, this.decision, required this.absUnjustified, required this.absJustified, required this.late});
+  final String school, classroom, studentName;
+  final int period;
+  final List<({String subject, int coef, String? average, String? classAverage})> lines;
+  final String? average, rank, honour, classAverage, conduct, appreciation, sanction, decision;
+  final bool? passes;
+  final int absUnjustified, absJustified, late;
+  factory ReportCard.fromJson(Map<String, dynamic> j) {
+    final r = j['rank'] as Map?;
+    final ab = j['absences'] as Map;
+    return ReportCard(
+      school: j['school']['name'] as String, classroom: j['classroom']['name'] as String, period: j['period'] as int, studentName: j['student']['name'] as String,
+      lines: [for (final l in j['lines'] as List) (subject: l['subject'] as String, coef: l['coef'] as int, average: l['average'] as String?, classAverage: l['class_average'] as String?)],
+      average: j['average'] as String?, honour: j['honour'] as String?, passes: j['passes'] as bool?, classAverage: j['class_average'] as String?,
+      rank: r == null ? null : '${r['position']}${r['position'] == 1 ? 'er' : 'e'}${r['tie'] == true ? ' ex' : ''} sur ${r['of']}',
+      conduct: j['conduct'] as String?, appreciation: j['appreciation'] as String?, sanction: j['sanction'] as String?, decision: j['decision'] as String?,
+      absUnjustified: ab['days_unjustified'] as int, absJustified: ab['days_justified'] as int, late: ab['late'] as int,
+    );
+  }
+}
+
+@immutable
+class ReminderItem {
+  const ReminderItem({required this.id, required this.familyId, required this.familyName, required this.step, required this.channel, required this.amount, required this.text, required this.canSendNow, this.contactName, this.phone, this.waLink});
+  final int id, familyId, amount;
+  final String familyName, step, channel, text;
+  final bool canSendNow;
+  final String? contactName, phone, waLink;
+  factory ReminderItem.fromJson(Map<String, dynamic> j) => ReminderItem(
+        id: j['id'] as int, familyId: j['family_id'] as int, familyName: j['family_name'] as String, step: j['step'] as String, channel: j['channel'] as String, amount: j['amount'] as int,
+        text: j['text'] as String, canSendNow: j['can_send_now'] == true, contactName: j['contact_name'] as String?, phone: j['phone'] as String?, waLink: j['wa_link'] as String?,
+      );
+}
+
+@immutable
+class ChildRow {
+  const ChildRow({required this.enrollmentId, required this.name, required this.school, required this.classroom, required this.year, required this.remaining, required this.overdue, required this.totalDue});
+  final int enrollmentId, remaining, overdue, totalDue;
+  final String name, school, classroom, year;
+  factory ChildRow.fromJson(Map<String, dynamic> j) => ChildRow(
+        enrollmentId: j['enrollment_id'] as int, name: j['name'] as String, school: j['school'] as String, classroom: j['classroom'] as String, year: j['year'] as String,
+        remaining: j['balance']['remaining'] as int, overdue: j['balance']['overdue'] as int, totalDue: j['balance']['total_due'] as int,
+      );
+}
+
+@immutable
+class AbsenceRow {
+  const AbsenceRow({required this.day, required this.kind, required this.justified, this.reason});
+  final DateTime day;
+  final String kind;
+  final bool justified;
+  final String? reason;
 }

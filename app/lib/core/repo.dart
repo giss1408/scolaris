@@ -60,6 +60,32 @@ abstract class SchoolRepo {
   Future<List<StaffRow>> staff();
   Future<void> addStaff(String name, String phone, String role);
   Future<void> removeStaff(int id);
+  Future<List<Subject>> subjects();
+  Future<Subject> addSubject(String name);
+  Future<Map<int, int>> coefficients(int yearId, String level);
+  Future<void> saveCoefficients(int yearId, String level, Map<int, int> coefs);
+  Future<List<Evaluation>> evaluations(int classroomId, {int? period});
+  Future<Evaluation> addEvaluation({required int classroomId, required int subjectId, required int period, required String kind, String? title, required int maxScore});
+  Future<({Evaluation evaluation, List<GradeRow> rows})> grades(int evaluationId);
+  Future<void> saveGrades(int evaluationId, List<GradeRow> rows);
+  Future<void> setLocked(int evaluationId, bool locked);
+  Future<ClassResults> results(int classroomId, int period);
+  Future<ReportCard> reportCard(int enrollmentId, int period);
+  Future<void> saveRemark(int enrollmentId, {required int period, String? conduct, String? appreciation, String? sanction, String? decision});
+  Future<void> recordAbsences(int classroomId, DateTime day, List<({int enrollmentId, String kind, bool justified})> entries);
+  Future<List<({int enrollmentId, String kind, bool justified})>> absencesOfDay(int classroomId, DateTime day);
+  Future<List<ReminderItem>> reminders();
+  Future<void> markReminderSent(int id);
+  Future<void> skipReminder(int id);
+  Future<void> recordPromise(int familyId, {required int amount, required DateTime promisedFor});
+  // parent space
+  Future<List<ChildRow>> children();
+  Future<List<PaymentRow>> childPayments(int enrollmentId);
+  Future<ReportCard> childReportCard(int enrollmentId, int period);
+  Future<List<AbsenceRow>> childAbsences(int enrollmentId);
+  // exports (CSV text, semicolon separated: opens in Excel)
+  Future<String> headcountCsv(int yearId);
+  Future<String> examCandidatesCsv(int yearId);
 }
 
 final repoProvider = Provider<SchoolRepo>((ref) => HttpRepo(ref.watch(apiDioProvider)));
@@ -163,4 +189,119 @@ class HttpRepo implements SchoolRepo {
 
   @override
   Future<void> removeStaff(int id) => _send<Object?>('DELETE', '/v1/staff/$id');
+
+  @override
+  Future<List<Subject>> subjects() async => [for (final j in await _get<List<dynamic>>('/v1/subjects')) Subject.fromJson(j as Map<String, dynamic>)];
+
+  @override
+  Future<Subject> addSubject(String name) async => Subject.fromJson(await _send<Map<String, dynamic>>('POST', '/v1/subjects', body: {'name': name.trim()}));
+
+  @override
+  Future<Map<int, int>> coefficients(int yearId, String level) async {
+    final r = await _get<List<dynamic>>('/v1/coefficients', q: {'year_id': yearId, 'level': level});
+    return {for (final j in r) (j as Map<String, dynamic>)['subject_id'] as int: j['coef'] as int};
+  }
+
+  @override
+  Future<void> saveCoefficients(int yearId, String level, Map<int, int> coefs) => _send<Object?>('PUT', '/v1/coefficients', body: {
+        'year_id': yearId,
+        'level': level,
+        'lines': [for (final e in coefs.entries) {'subject_id': e.key, 'coef': e.value}],
+      });
+
+  @override
+  Future<List<Evaluation>> evaluations(int classroomId, {int? period}) async {
+    final r = await _get<List<dynamic>>('/v1/evaluations', q: {'classroom_id': classroomId, if (period != null) 'period': period});
+    return [for (final j in r) Evaluation.fromJson(j as Map<String, dynamic>)];
+  }
+
+  @override
+  Future<Evaluation> addEvaluation({required int classroomId, required int subjectId, required int period, required String kind, String? title, required int maxScore}) async =>
+      Evaluation.fromJson(await _send<Map<String, dynamic>>('POST', '/v1/evaluations', body: {
+        'classroom_id': classroomId, 'subject_id': subjectId, 'period': period, 'kind': kind, if ((title ?? '').trim().isNotEmpty) 'title': title!.trim(), 'max_score': maxScore,
+      }));
+
+  @override
+  Future<({Evaluation evaluation, List<GradeRow> rows})> grades(int evaluationId) async {
+    final j = await _get<Map<String, dynamic>>('/v1/evaluations/$evaluationId/grades');
+    return (
+      evaluation: Evaluation.fromJson(j['evaluation'] as Map<String, dynamic>),
+      rows: [for (final r in j['rows'] as List) GradeRow(enrollmentId: r['enrollment_id'] as int, name: r['name'] as String, value: r['value'] as String?, absent: r['absent'] == true)],
+    );
+  }
+
+  @override
+  Future<void> saveGrades(int evaluationId, List<GradeRow> rows) => _send<Object?>('PUT', '/v1/evaluations/$evaluationId/grades', body: {
+        'grades': [for (final r in rows) {'enrollment_id': r.enrollmentId, 'absent': r.absent, if (!r.absent && r.value != null) 'value': r.value}],
+      });
+
+  @override
+  Future<void> setLocked(int evaluationId, bool locked) => _send<Object?>('POST', '/v1/evaluations/$evaluationId/${locked ? 'lock' : 'unlock'}');
+
+  @override
+  Future<ClassResults> results(int classroomId, int period) async => ClassResults.fromJson(await _get<Map<String, dynamic>>('/v1/classrooms/$classroomId/results', q: {'period': period}));
+
+  @override
+  Future<ReportCard> reportCard(int enrollmentId, int period) async => ReportCard.fromJson(await _get<Map<String, dynamic>>('/v1/enrollments/$enrollmentId/report-card', q: {'period': period}));
+
+  @override
+  Future<void> saveRemark(int enrollmentId, {required int period, String? conduct, String? appreciation, String? sanction, String? decision}) =>
+      _send<Object?>('PUT', '/v1/enrollments/$enrollmentId/remarks', body: {
+        'period': period,
+        if (conduct != null) 'conduct': conduct,
+        if (appreciation != null) 'appreciation': appreciation,
+        if (sanction != null) 'sanction': sanction,
+        if (decision != null) 'decision': decision,
+      });
+
+  @override
+  Future<void> recordAbsences(int classroomId, DateTime day, List<({int enrollmentId, String kind, bool justified})> entries) => _send<Object?>('POST', '/v1/absences', body: {
+        'day': isoDate(day), 'classroom_id': classroomId, 'replace': true,
+        'entries': [for (final e in entries) {'enrollment_id': e.enrollmentId, 'kind': e.kind, 'justified': e.justified}],
+      });
+
+  @override
+  Future<List<({int enrollmentId, String kind, bool justified})>> absencesOfDay(int classroomId, DateTime day) async {
+    final r = await _get<List<dynamic>>('/v1/classrooms/$classroomId/absences', q: {'day': isoDate(day)});
+    return [for (final j in r) (enrollmentId: (j as Map<String, dynamic>)['enrollment_id'] as int, kind: j['kind'] as String, justified: j['justified'] == true)];
+  }
+
+  @override
+  Future<List<ReminderItem>> reminders() async {
+    final j = await _get<Map<String, dynamic>>('/v1/reminders');
+    return [for (final r in j['items'] as List) ReminderItem.fromJson(r as Map<String, dynamic>)];
+  }
+
+  @override
+  Future<void> markReminderSent(int id) => _send<Object?>('POST', '/v1/reminders/$id/sent');
+
+  @override
+  Future<void> skipReminder(int id) => _send<Object?>('POST', '/v1/reminders/$id/skip');
+
+  @override
+  Future<void> recordPromise(int familyId, {required int amount, required DateTime promisedFor}) =>
+      _send<Object?>('POST', '/v1/families/$familyId/promises', body: {'amount': amount, 'promised_for': isoDate(promisedFor)});
+
+  @override
+  Future<List<ChildRow>> children() async => [for (final j in await _get<List<dynamic>>('/v1/parent/children')) ChildRow.fromJson(j as Map<String, dynamic>)];
+
+  @override
+  Future<List<PaymentRow>> childPayments(int enrollmentId) async => [
+        for (final j in await _get<List<dynamic>>('/v1/parent/children/$enrollmentId/payments')) PaymentRow.fromJson({...(j as Map<String, dynamic>), 'cancelled': false}),
+      ];
+
+  @override
+  Future<ReportCard> childReportCard(int enrollmentId, int period) async => ReportCard.fromJson(await _get<Map<String, dynamic>>('/v1/parent/children/$enrollmentId/report-card', q: {'period': period}));
+
+  @override
+  Future<List<AbsenceRow>> childAbsences(int enrollmentId) async => [
+        for (final j in await _get<List<dynamic>>('/v1/parent/children/$enrollmentId/absences'))
+          AbsenceRow(day: DateTime.parse((j as Map<String, dynamic>)['day'] as String), kind: j['kind'] as String, justified: j['justified'] == true, reason: j['reason'] as String?),
+      ];
+
+  @override
+  Future<String> headcountCsv(int yearId) => _get<String>('/v1/exports/headcount', q: {'year_id': yearId, 'format': 'csv'});
+
+  @override
+  Future<String> examCandidatesCsv(int yearId) => _get<String>('/v1/exports/exam-candidates', q: {'year_id': yearId, 'format': 'csv'});
 }

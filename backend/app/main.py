@@ -8,7 +8,7 @@ from sqlalchemy import text
 from app.config import get_settings
 from app.db import SessionLocal
 from app.errors import install_error_handlers
-from app.routers import money, school, students
+from app.routers import academics, exports, money, parent, reminders, school, students
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
@@ -25,7 +25,7 @@ def create_app() -> FastAPI:
         app.add_middleware(CORSMiddleware, allow_origins=s.cors_origins, allow_methods=["*"], allow_headers=["*"])
     install_error_handlers(app)
     app.include_router(health_router({"db": _check_db}))
-    for r in (school.router, students.router, money.router):
+    for r in (school.router, students.router, money.router, academics.router, reminders.router, parent.router, exports.router):
         app.include_router(r)
     return app
 
